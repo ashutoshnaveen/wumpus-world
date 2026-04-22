@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#1a1a2e">
+<title>Wumpus World</title>
+<link rel="manifest" href="data:application/json,{}">
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --surface: #16213e;
+    --accent: #e94560;
+    --gold: #f5c842;
+    --safe: #0f3460;
+    --text: #eee;
+    --cell-size: 80px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100dvh;
+    display: flex; flex-direction: column; align-items: center;
+    overflow-y: auto; overflow-x: hidden;
+    user-select: none; padding: 8px 8px 24px;
+  }
+  h1 { font-size: 1.3rem; margin-bottom: 2px; letter-spacing: 1px; }
+  .subtitle { font-size: 0.7rem; opacity: 0.6; margin-bottom: 6px; }
+
+  /* Mode selector */
+  .mode-bar {
+    display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 8px; max-width: 380px;
+  }
+  .mode-bar button {
+    background: var(--surface); color: var(--text); border: 1px solid #444;
+    border-radius: 8px; padding: 5px 9px; font-size: 0.68rem; cursor: pointer;
+    transition: all 0.15s; touch-action: manipulation; line-height: 1.3;
+  }
+  .mode-bar button:active { transform: scale(0.95); }
+  .mode-bar button.active { background: var(--accent); border-color: var(--accent); font-weight: bold; }
+
+  .mode-info {
+    font-size: 0.68rem; opacity: 0.65; text-align: center;
+    margin-bottom: 6px; max-width: 360px; line-height: 1.4;
+    min-height: 30px;
+  }
+  .mode-info b { color: var(--gold); }
+
+  /* Status */
+  .status-bar {
+    display: flex; gap: 10px; align-items: center;
+    font-size: 0.8rem; margin-bottom: 6px; flex-wrap: wrap; justify-content: center;
+  }
+  .status-bar span { background: var(--surface); padding: 3px 9px; border-radius: 8px; }
+  .status-bar .score { color: var(--gold); font-weight: bold; }
+
+  .message {
+    min-height: 24px; font-size: 0.8rem; margin-bottom: 5px;
+    text-align: center; padding: 2px 8px; border-radius: 6px;
+    transition: all 0.2s; max-width: 380px;
+  }
+  .message.warn { color: var(--accent); }
+  .message.win { color: var(--gold); }
+  .message.slip { color: #ff9800; }
+
+  /* Grid — columns set dynamically via JS */
+  .grid {
+    display: grid; gap: 2px; margin-bottom: 8px; position: relative;
+  }
+  .cell {
+    background: #111; border: 2px solid #333; border-radius: 6px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    position: relative; transition: all 0.15s;
+  }
+  .cell.visited { background: var(--safe); border-color: #2a5298; }
+  .cell.current { border-color: var(--gold); box-shadow: 0 0 10px rgba(245,200,66,0.35); }
+  .cell.glitter-cell { 
+    border-color: var(--gold) !important; 
+    box-shadow: 0 0 14px rgba(245,200,66,0.6) !important;
+    animation: goldPulse 1s ease-in-out infinite;
+  }
+  @keyframes goldPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(245,200,66,0.4); }
+    50% { box-shadow: 0 0 18px rgba(245,200,66,0.8); }
+  }
+  .cell.noisy-hint { border-color: #ff9800; border-style: dashed; }
+  .cell .percepts {
+    position: absolute; bottom: 1px; right: 2px;
+    display: flex; gap: 1px;
+  }
+  .cell .entity { line-height: 1; }
+  .cell .label { opacity: 0.7; }
+
+  /* Controls */
+  .controls {
+    display: grid;
+    grid-template-areas: ". up ." "left . right" "tleft down tright";
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 42px);
+    gap: 3px; margin-bottom: 6px;
+  }
+  .controls button {
+    background: var(--surface); color: var(--text); border: 1px solid #444;
+    border-radius: 10px; font-size: 1.2rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.1s; touch-action: manipulation;
+  }
+  .controls button:active { background: var(--accent); transform: scale(0.92); }
+  .btn-up { grid-area: up; } .btn-down { grid-area: down; }
+  .btn-left { grid-area: left; } .btn-right { grid-area: right; }
+  .btn-tleft { grid-area: tleft; font-size: 0.7rem !important; opacity: 0.85; }
+  .btn-tright { grid-area: tright; font-size: 0.7rem !important; opacity: 0.85; }
+
+  .actions {
+    display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; margin-bottom: 6px;
+  }
+  .actions button {
+    background: var(--surface); color: var(--text); border: 1px solid #555;
+    border-radius: 10px; padding: 7px 12px; font-size: 0.75rem; cursor: pointer;
+    transition: all 0.1s; touch-action: manipulation;
+  }
+  .actions button:active { background: var(--accent); transform: scale(0.95); }
+  .actions button:disabled { opacity: 0.3; }
+  .actions .btn-new { background: var(--accent); border-color: var(--accent); font-weight: bold; }
+
+  .legend {
+    font-size: 0.6rem; opacity: 0.45; text-align: center; line-height: 1.5;
+    max-width: 360px;
+  }
+
+  /* Hint system */
+  .hint-bar {
+    display: flex; gap: 6px; align-items: center; margin-bottom: 5px;
+    max-width: 380px; width: 100%;
+  }
+  .hint-bar button {
+    background: #2a1a3e; color: var(--gold); border: 1px solid #555;
+    border-radius: 10px; padding: 5px 12px; font-size: 0.75rem; cursor: pointer;
+    transition: all 0.15s; touch-action: manipulation; white-space: nowrap;
+  }
+  .hint-bar button:active { transform: scale(0.95); background: #3d2a56; }
+  .hint-bar button.active { background: #3d2a56; border-color: var(--gold); }
+  .hint-box {
+    display: none; background: linear-gradient(135deg, #1a1a2e 0%, #2a1a3e 100%);
+    border: 1px solid #444; border-radius: 10px; padding: 8px 12px;
+    font-size: 0.73rem; line-height: 1.5; max-width: 380px; width: 100%;
+    margin-bottom: 5px; position: relative;
+  }
+  .hint-box.show { display: block; }
+  .hint-box .hint-icon { color: var(--gold); font-weight: bold; }
+  .hint-box .hint-text { color: #ddd; }
+  .hint-box .hint-ref { color: var(--accent); font-size: 0.65rem; opacity: 0.8; display: block; margin-top: 3px; }
+  .hint-box .hint-logic { 
+    background: #111; padding: 4px 8px; border-radius: 5px; margin: 4px 0;
+    font-family: 'Courier New', monospace; font-size: 0.68rem;
+    border-left: 2px solid var(--gold); color: #ccc;
+  }
+
+  .knowledge-toggle {
+    font-size: 0.72rem; opacity: 0.7; cursor: pointer;
+    text-decoration: underline; margin-bottom: 3px;
+  }
+  .knowledge {
+    display: none; font-size: 0.65rem; background: var(--surface);
+    padding: 6px 10px; border-radius: 8px; margin-bottom: 5px;
+    max-width: 360px; line-height: 1.4; max-height: 100px; overflow-y: auto;
+  }
+  .knowledge.show { display: block; }
+
+  /* Study Guide */
+  .guide { width: 100%; max-width: 400px; margin-top: 12px; }
+  .guide-toggle {
+    background: var(--surface); color: var(--gold); border: 1px solid #444;
+    border-radius: 10px; padding: 10px 16px; font-size: 0.85rem; cursor: pointer;
+    width: 100%; text-align: center; font-weight: bold;
+    touch-action: manipulation; transition: all 0.15s;
+  }
+  .guide-toggle:active { transform: scale(0.98); }
+  .guide-body {
+    display: none; background: var(--surface); border: 1px solid #333;
+    border-top: none; border-radius: 0 0 10px 10px;
+    padding: 12px 14px; font-size: 0.75rem; line-height: 1.6;
+    max-height: 70vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  .guide-body.show { display: block; }
+  .guide-body h3 {
+    color: var(--gold); font-size: 0.85rem; margin: 14px 0 6px;
+    padding-bottom: 3px; border-bottom: 1px solid #333;
+  }
+  .guide-body h3:first-child { margin-top: 0; }
+  .guide-body h4 { color: var(--accent); font-size: 0.78rem; margin: 10px 0 4px; }
+  .guide-body p { margin: 4px 0; opacity: 0.85; }
+  .guide-body .ref {
+    display: inline-block; background: #0f3460; color: var(--gold);
+    padding: 1px 6px; border-radius: 4px; font-size: 0.65rem; font-weight: bold;
+    margin-right: 4px;
+  }
+  .guide-body .formula {
+    background: #111; padding: 6px 10px; border-radius: 6px;
+    font-family: 'Courier New', monospace; font-size: 0.72rem;
+    margin: 4px 0 8px; overflow-x: auto; white-space: nowrap;
+    border-left: 3px solid var(--accent);
+  }
+  .guide-body .concept {
+    background: rgba(233,69,96,0.1); border-left: 3px solid var(--accent);
+    padding: 6px 10px; border-radius: 0 6px 6px 0; margin: 6px 0;
+  }
+  .guide-body .game-link {
+    color: var(--gold); font-style: italic;
+  }
+  .guide-body table { width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 0.7rem; }
+  .guide-body th { text-align: left; color: var(--gold); padding: 4px 6px; border-bottom: 1px solid #444; }
+  .guide-body td { padding: 4px 6px; border-bottom: 1px solid #222; }
+  .guide-body ul { margin: 4px 0 4px 16px; }
+  .guide-body li { margin: 2px 0; }
+
+  .overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.88);
+    flex-direction: column; align-items: center; justify-content: center;
+    z-index: 10; padding: 20px; text-align: center;
+  }
+  .overlay.show { display: flex; }
+  .overlay h2 { font-size: 1.8rem; margin-bottom: 6px; }
+  .overlay .result { font-size: 0.95rem; margin-bottom: 14px; opacity: 0.8; max-width: 320px; }
+  .overlay button {
+    background: var(--accent); color: #fff; border: none;
+    border-radius: 12px; padding: 11px 28px; font-size: 0.95rem;
+    cursor: pointer; touch-action: manipulation;
+  }
+</style>
+</head>
+<body>
+
+<h1>🏰 Wumpus World</h1>
+<p class="subtitle">Russell &amp; Norvig — AI: A Modern Approach</p>
+
+<div class="mode-bar" id="mode-bar">
+  <button data-mode="classic" class="active">📖 Classic<br><small>Ch.7</small></button>
+  <button data-mode="stochastic">🎲 Stochastic<br><small>Ch.13</small></button>
+  <button data-mode="noisy">📡 Noisy<br><small>Sensors</small></button>
+  <button data-mode="large">🗺️ Large<br><small>6×6</small></button>
+  <button data-mode="nightmare">💀 Nightmare<br><small>All</small></button>
+</div>
+<div class="mode-info" id="mode-info"></div>
+
+<div class="status-bar">
+  <span class="score" id="score">Score: 0</span>
+  <span id="arrows">🏹 1</span>
+  <span id="has-gold">💰 No</span>
+  <span id="moves-count">🦶 0</span>
+  <span id="facing-dir">🧭 ➡</span>
+</div>
+
+<div class="message" id="msg">&nbsp;</div>
+
+<div class="hint-bar">
+  <button id="hint-toggle" onclick="toggleHints()">💡 Hints: Off</button>
+  <button id="hint-next" onclick="showNextHint()" style="display:none">Next Hint →</button>
+</div>
+<div class="hint-box" id="hint-box"></div>
+
+<div class="knowledge-toggle" id="kb-toggle">▶ Knowledge Base</div>
+<div class="knowledge" id="kb"></div>
+
+<div class="grid" id="grid"></div>
+
+<div class="controls">
+  <button class="btn-up" onclick="move('up')" aria-label="Up">↑</button>
+  <button class="btn-left" onclick="move('left')" aria-label="Left">←</button>
+  <button class="btn-right" onclick="move('right')" aria-label="Right">→</button>
+  <button class="btn-tleft" onclick="turn('left')" aria-label="Turn Left">↩ Q</button>
+  <button class="btn-down" onclick="move('down')" aria-label="Down">↓</button>
+  <button class="btn-tright" onclick="turn('right')" aria-label="Turn Right">E ↪</button>
+</div>
+
+<div class="actions">
+  <button onclick="grab()" id="btn-grab">✋ Grab</button>
+  <button onclick="shoot()" id="btn-shoot">🏹 Shoot</button>
+  <button onclick="climb()" id="btn-climb">🧗 Climb</button>
+  <button class="btn-new" onclick="newGame()">🔄 New</button>
+</div>
+
+<!-- ── RULES & CONTROLS ────────────────────────────── -->
+<div class="guide" style="margin-top:6px">
+  <button class="guide-toggle" id="rules-toggle" style="font-size:0.78rem">📋 Rules &amp; Controls</button>
+  <div class="guide-body" id="rules-body">
+
+    <h3>Game Rules (Section 7.2)</h3>
+    <h4>Objective</h4>
+    <p>Find the <b>gold ✨</b>, grab it, and <b>climb out</b> at [1,1] alive. Maximize your score.</p>
+
+    <h4>The Cave</h4>
+    <ul>
+      <li><b>Grid</b> — 4×4 (Classic) or 6×6 (Large/Nightmare)</li>
+      <li><b>Agent</b> starts at [1,1] (bottom-left), <b>facing right</b></li>
+      <li><b>Wumpus 👹</b> — a beast in one cell. Kills you if you enter. Doesn't move.</li>
+      <li><b>Pits 🕳️</b> — bottomless pits. Each cell (except [1,1]) has 20% chance of a pit.</li>
+      <li><b>Gold ✨</b> — hidden in one cell.</li>
+    </ul>
+
+    <h4>Percepts (what you sense)</h4>
+    <table>
+      <tr><th>Percept</th><th>Means</th></tr>
+      <tr><td>🟢 Stench</td><td>Wumpus is in an <b>adjacent</b> cell (up/down/left/right)</td></tr>
+      <tr><td>💨 Breeze</td><td>A pit is in an <b>adjacent</b> cell</td></tr>
+      <tr><td>✨ Glitter</td><td>Gold is in <b>this</b> cell — use Grab!</td></tr>
+      <tr><td>Bump</td><td>You walked into a wall (no movement)</td></tr>
+      <tr><td>🎯 Scream</td><td>Your arrow killed the Wumpus</td></tr>
+    </table>
+
+    <h4>Scoring</h4>
+    <table>
+      <tr><th>Event</th><th>Points</th></tr>
+      <tr><td>Grab gold + climb out at [1,1]</td><td><b>+1000</b></td></tr>
+      <tr><td>Death (pit or Wumpus)</td><td><b>−1000</b></td></tr>
+      <tr><td>Each action</td><td><b>−1</b></td></tr>
+      <tr><td>Shooting the arrow</td><td><b>−10</b></td></tr>
+    </table>
+
+    <h4>Arrow Rules</h4>
+    <ul>
+      <li>You have <b>exactly 1 arrow</b></li>
+      <li>The arrow flies in a <b>straight line</b> in the direction you're <b>currently facing</b></li>
+      <li>It travels through cells until it hits a Wumpus (kill!) or a wall (miss)</li>
+      <li>Your facing direction = the direction of your <b>last move</b></li>
+    </ul>
+
+    <h3>Controls</h3>
+    <h4>Movement (also changes facing)</h4>
+    <table>
+      <tr><th>Input</th><th>Action</th></tr>
+      <tr><td>↑ button / Arrow Up / W</td><td>Move up (face up)</td></tr>
+      <tr><td>↓ button / Arrow Down / S</td><td>Move down (face down)</td></tr>
+      <tr><td>← button / Arrow Left / A</td><td>Move left (face left)</td></tr>
+      <tr><td>→ button / Arrow Right / D</td><td>Move right (face right)</td></tr>
+      <tr><td>Swipe on touchscreen</td><td>Move in swipe direction</td></tr>
+    </table>
+
+    <h4>Turning (change facing without moving)</h4>
+    <table>
+      <tr><th>Input</th><th>Action</th></tr>
+      <tr><td>↩ Q button / <b>Q</b> key</td><td>Turn left (counter-clockwise)</td></tr>
+      <tr><td>E ↪ button / <b>E</b> key</td><td>Turn right (clockwise)</td></tr>
+    </table>
+    <p>Turning costs −1 point (it's an action). Use this to aim your arrow before shooting!</p>
+
+    <h4>Actions</h4>
+    <table>
+      <tr><th>Input</th><th>Action</th></tr>
+      <tr><td>✋ Grab / <b>G</b> key</td><td>Pick up gold (if in current cell)</td></tr>
+      <tr><td>🏹 Shoot / <b>F</b> key</td><td>Fire arrow in <b>facing direction</b> (straight line)</td></tr>
+      <tr><td>🧗 Climb / <b>C</b> key</td><td>Climb out — only works at [1,1]</td></tr>
+      <tr><td>🔄 New</td><td>Start a new game</td></tr>
+    </table>
+
+    <h4>Grid Symbols</h4>
+    <table>
+      <tr><th>Symbol</th><th>Meaning</th></tr>
+      <tr><td>➡ ⬆ ⬇ ⬅</td><td>You (arrow shows facing direction)</td></tr>
+      <tr><td>👹</td><td>Wumpus (revealed on death/game end)</td></tr>
+      <tr><td>🕳️</td><td>Pit (revealed on death/game end)</td></tr>
+      <tr><td>✨</td><td>Gold</td></tr>
+      <tr><td>✅</td><td>KB inferred: cell is safe</td></tr>
+      <tr><td>❓</td><td>Unknown — cannot determine safety</td></tr>
+      <tr><td>☠️</td><td>Dead Wumpus (killed by your arrow)</td></tr>
+    </table>
+
+  </div>
+</div>
+
+<!-- ── STUDY GUIDE ─────────────────────────────────── -->
+<div class="guide">
+  <button class="guide-toggle" id="guide-toggle">📚 Study Guide — Textbook Reference</button>
+  <div class="guide-body" id="guide-body">
+
+    <h3>1. Environment Definition (Ch. 2)</h3>
+    <span class="ref">Section 2.3</span> PEAS Description
+    <table>
+      <tr><th>PEAS</th><th>Wumpus World</th></tr>
+      <tr><td>Performance</td><td>+1000 gold &amp; escape, −1000 death, −1/action, −10 arrow</td></tr>
+      <tr><td>Environment</td><td>4×4 (or N×N) grid cave with pits, wumpus, gold</td></tr>
+      <tr><td>Actuators</td><td>Forward, TurnLeft, TurnRight, Grab, Shoot, Climb</td></tr>
+      <tr><td>Sensors</td><td>Stench, Breeze, Glitter, Bump, Scream</td></tr>
+    </table>
+
+    <span class="ref">Section 2.3.2</span> Environment Properties
+    <table>
+      <tr><th>Property</th><th>Value</th></tr>
+      <tr><td>Observable</td><td>Partially — only current cell percepts</td></tr>
+      <tr><td>Deterministic</td><td>Yes in Classic; No in Stochastic mode</td></tr>
+      <tr><td>Episodic / Sequential</td><td>Sequential — past actions affect future</td></tr>
+      <tr><td>Static / Dynamic</td><td>Static — world doesn't change while agent thinks</td></tr>
+      <tr><td>Discrete / Continuous</td><td>Discrete</td></tr>
+      <tr><td>Single / Multi-agent</td><td>Single agent (Wumpus is environment, not agent)</td></tr>
+    </table>
+    <p class="game-link">→ Play Classic mode to observe all these properties firsthand.</p>
+
+    <h3>2. Knowledge-Based Agents (Ch. 7)</h3>
+    <span class="ref">Section 7.1</span> Core Architecture
+
+    <div class="concept">
+      A <b>knowledge-based agent</b> maintains a Knowledge Base (KB) of sentences in a formal language. It reasons by:
+      <br>1. TELL — add new percept to KB
+      <br>2. ASK — query KB to decide action
+      <br>3. Act — perform the chosen action
+    </div>
+
+    <span class="ref">Section 7.2</span> Wumpus World Specification
+    <ul>
+      <li>Grid: 4×4, agent starts at [1,1] facing right</li>
+      <li>Squares adjacent to Wumpus → Stench</li>
+      <li>Squares adjacent to Pit → Breeze</li>
+      <li>Square with gold → Glitter</li>
+      <li>Pits: each square (except [1,1]) has P=0.2 of containing a pit</li>
+      <li>Agent has exactly 1 arrow</li>
+    </ul>
+    <p class="game-link">→ Open the "Knowledge Base" panel above the grid to see this in action!</p>
+
+    <h4>Propositional Logic Inference</h4>
+    <span class="ref">Section 7.3–7.5</span>
+
+    <p>Key idea: encode percepts as propositions and use inference rules.</p>
+    <div class="formula">¬B₁,₁ → ¬P₁,₂ ∧ ¬P₂,₁</div>
+    <p>"No breeze at [1,1] implies no pit at [1,2] and [2,1]"</p>
+
+    <div class="formula">S₁,₂ ∧ ¬S₁,₁ → W₁,₃ ∨ W₂,₂</div>
+    <p>"Stench at [1,2] but not [1,1] → Wumpus is at [1,3] or [2,2]"</p>
+
+    <p>Methods to determine entailment (KB ⊨ α):</p>
+    <ul>
+      <li><b>Model checking</b> — enumerate all possible worlds (exponential)</li>
+      <li><b>Resolution</b> — prove by contradiction using CNF</li>
+      <li><b>Forward/Backward chaining</b> — for Horn clauses</li>
+    </ul>
+    <p class="game-link">→ In Classic mode, the KB panel shows exactly these inferences as you explore.</p>
+
+    <h3>3. First-Order Logic (Ch. 8–9)</h3>
+    <span class="ref">Section 8.3</span>
+
+    <div class="concept">
+      Propositional logic needs a separate symbol for each cell: P₁,₁, P₁,₂, ... P₄,₄ (16 symbols just for pits!).<br>
+      <b>FOL</b> uses variables and quantifiers — one rule covers all cells:
+    </div>
+    <div class="formula">∀x,y Breeze(x,y) ⟺ ∃a,b (Adjacent(x,y,a,b) ∧ Pit(a,b))</div>
+    <p>"A cell has breeze iff some adjacent cell has a pit" — covers any grid size with one sentence.</p>
+
+    <div class="formula">∀x,y ¬Breeze(x,y) → ∀a,b (Adjacent(x,y,a,b) → ¬Pit(a,b))</div>
+    <p>"No breeze means all neighbors are pit-free."</p>
+
+    <p class="game-link">→ Try Large Cave (6×6) mode — notice how many propositions you'd need vs. one FOL rule.</p>
+
+    <h3>4. Uncertainty &amp; Probability (Ch. 13)</h3>
+    <span class="ref">Section 13.1</span>
+
+    <div class="concept">
+      When the agent faces unknown cells with conflicting information, logical entailment can't decide.
+      Instead, compute <b>P(Pit | percepts)</b> using Bayes' theorem:
+    </div>
+    <div class="formula">P(Pit₃,₁ | known) = α · P(known | Pit₃,₁) · P(Pit₃,₁)</div>
+
+    <p>Where:</p>
+    <ul>
+      <li><b>P(Pit₃,₁)</b> = 0.2 (prior — each cell has 20% pit chance)</li>
+      <li><b>P(known | Pit₃,₁)</b> = likelihood of observed breezes given pit there</li>
+      <li><b>α</b> = normalization constant</li>
+    </ul>
+
+    <span class="ref">Section 13.2</span> Bayesian Network for Wumpus
+    <p>The book builds a Bayesian network where:</p>
+    <ul>
+      <li>Pit nodes are parents of Breeze nodes</li>
+      <li>Observed breezes are evidence</li>
+      <li>Inference computes posterior probability of pits in unvisited cells</li>
+    </ul>
+
+    <p class="game-link">→ In Stochastic mode, your moves slip 20% of the time — pure logic fails, you must reason probabilistically about which cells are safe to <i>attempt</i> to reach.</p>
+
+    <h3>5. Sensor Models &amp; Filtering (Ch. 15)</h3>
+    <span class="ref">Section 15.1–15.2</span>
+
+    <div class="concept">
+      What if your sensors are <b>unreliable</b>? A breeze might be a false positive, or you might miss a real stench.<br>
+      The sensor model defines: <b>P(percept | true_state)</b>
+    </div>
+    <div class="formula">P(Stench_observed | Wumpus_adjacent) = 0.85</div>
+    <div class="formula">P(Stench_observed | ¬Wumpus_adjacent) = 0.15</div>
+    <p>Now even "safe" inferences might be wrong. You need to maintain <b>belief states</b> — probability distributions over possible worlds, updated at each step.</p>
+
+    <p>This connects to:</p>
+    <ul>
+      <li><b>Hidden Markov Models</b> — state changes over time, observations are noisy</li>
+      <li><b>Filtering</b> — P(state_t | observations₁:t)</li>
+    </ul>
+    <p class="game-link">→ In Noisy Sensors mode, percepts lie 15% of the time. Watch the KB make wrong inferences! Dashed orange borders = uncertain cells.</p>
+
+    <h3>6. Decision Theory (Ch. 16)</h3>
+    <span class="ref">Section 16.1–16.3</span>
+
+    <div class="concept">
+      With uncertain actions AND uncertain sensors, the agent needs a full <b>decision-theoretic framework</b>:
+      <br><b>MEU</b> — Maximum Expected Utility: choose the action that maximizes expected utility over all possible outcomes.
+    </div>
+    <div class="formula">action* = argmax_a Σ_s P(s|evidence) · U(s, a)</div>
+    <p>Where U(s,a) accounts for:</p>
+    <ul>
+      <li>Probability of dying (pit/wumpus) if you move there</li>
+      <li>Probability of slipping to wrong cell</li>
+      <li>Expected future reward (reaching gold)</li>
+      <li>Cost of each action (−1 per step)</li>
+    </ul>
+    <p class="game-link">→ Nightmare mode combines everything: stochastic moves + noisy sensors + 6×6 + 2 Wumpi. Pure decision theory territory!</p>
+
+    <h3>7. Quick Reference — Symbols in Game</h3>
+    <table>
+      <tr><th>In Game</th><th>Formal</th><th>Meaning</th></tr>
+      <tr><td>💨 Breeze</td><td>B<sub>x,y</sub></td><td>Adjacent cell has a pit</td></tr>
+      <tr><td>🟢 Stench</td><td>S<sub>x,y</sub></td><td>Adjacent cell has Wumpus</td></tr>
+      <tr><td>✨ Glitter</td><td>G<sub>x,y</sub></td><td>Gold is in this cell</td></tr>
+      <tr><td>✅ Safe</td><td>KB ⊨ ¬P ∧ ¬W</td><td>Inferred: no pit and no Wumpus</td></tr>
+      <tr><td>❓ Unknown</td><td>KB ⊭ safe</td><td>Cannot determine safety</td></tr>
+      <tr><td>⚠️ SLIPPED</td><td>P(s'|s,a) ≠ 1</td><td>Non-deterministic transition</td></tr>
+      <tr><td>🚫 sensors unreliable</td><td>P(obs|state) &lt; 1</td><td>Sensor model is noisy</td></tr>
+    </table>
+
+    <h3>8. Mode → Chapter Mapping</h3>
+    <table>
+      <tr><th>Game Mode</th><th>Chapters</th><th>Concepts Practiced</th></tr>
+      <tr><td>📖 Classic</td><td>Ch. 2, 7</td><td>PEAS, propositional logic, KB agents, entailment</td></tr>
+      <tr><td>🎲 Stochastic</td><td>Ch. 13</td><td>Probability, Bayes' theorem, uncertain actions*</td></tr>
+      <tr><td>📡 Noisy</td><td>Ch. 15</td><td>Sensor models, belief states, filtering*</td></tr>
+      <tr><td>🗺️ Large</td><td>Ch. 8–9</td><td>FOL scalability, universal quantification*</td></tr>
+      <tr><td>💀 Nightmare</td><td>Ch. 16</td><td>Decision theory, MEU, decision networks*</td></tr>
+    </table>
+    <p style="opacity:0.5; font-size:0.6rem; margin-top:8px;">* Stochastic, Noisy, Large, and Nightmare are extensions <i>inspired by</i> textbook concepts. Classic mode is the exact specification from Section 7.2.</p>
+    <p style="opacity:0.5; font-size:0.6rem;">Reference: Russell, S. &amp; Norvig, P. — <i>Artificial Intelligence: A Modern Approach</i> (4th Edition)</p>
+
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <h2 id="overlay-title"></h2>
+  <p class="result" id="overlay-result"></p>
+  <button onclick="newGame(); document.getElementById('overlay').classList.remove('show')">Play Again</button>
+</div>
+
+<script>
+/* ── MODE DEFINITIONS ─────────────────────────────────── */
+const MODES = {
+  classic: {
+    name: 'Classic', gridSize: 4, pitProb: 0.2,
+    stochastic: false, slipChance: 0,
+    noisySensors: false, noiseProb: 0,
+    wumpusCount: 1,
+    desc: '<b>Ch. 7 — Logical Agents.</b> Standard 4×4 cave. Deterministic moves, perfect sensors. Use propositional logic to infer safe cells.'
+  },
+  stochastic: {
+    name: 'Stochastic', gridSize: 4, pitProb: 0.2,
+    stochastic: true, slipChance: 0.2,
+    noisySensors: false, noiseProb: 0,
+    wumpusCount: 1,
+    desc: '<b>Ch. 13 — Uncertainty.</b> 20% chance your move <i>slips</i> to a random adjacent cell. Pure logic fails — you need probabilistic reasoning!'
+  },
+  noisy: {
+    name: 'Noisy Sensors', gridSize: 4, pitProb: 0.2,
+    stochastic: false, slipChance: 0,
+    noisySensors: true, noiseProb: 0.15,
+    wumpusCount: 1,
+    desc: '<b>Sensor Uncertainty.</b> 15% chance each percept is <i>wrong</i> (false positive or missed). Can you still reason safely with unreliable information?'
+  },
+  large: {
+    name: 'Large Cave', gridSize: 6, pitProb: 0.2,
+    stochastic: false, slipChance: 0,
+    noisySensors: false, noiseProb: 0,
+    wumpusCount: 2,
+    desc: '<b>Scaled Up.</b> 6×6 grid with 2 Wumpi. More pits, more unknowns. Tests scalability of your reasoning — FOL shines here (Ch. 8-9).'
+  },
+  nightmare: {
+    name: 'Nightmare', gridSize: 6, pitProb: 0.25,
+    stochastic: true, slipChance: 0.2,
+    noisySensors: true, noiseProb: 0.15,
+    wumpusCount: 2,
+    desc: '<b>💀 All combined.</b> 6×6 grid, 2 Wumpi, stochastic moves, noisy sensors, more pits. Good luck — you\'ll need decision networks (Ch. 16)!'
+  }
+};
+
+let currentMode = 'classic';
+let cfg, N;
+let world, agent, score, arrows, hasGold, wumpusAlive, gameOver, visited, kb, moveCount;
+let perceivedWorld; // what agent THINKS it perceives (for noisy mode)
+let facing; // 'up','down','left','right' — direction agent faces (per textbook: starts facing right)
+const FACING_ARROWS = {up:'⬆', down:'⬇', left:'⬅', right:'➡'};
+const FACING_DELTA = {up:[-1,0], down:[1,0], left:[0,-1], right:[0,1]};
+const TURN_ORDER = ['up','right','down','left']; // clockwise
+
+function rand(n) { return Math.floor(Math.random() * n); }
+function pick(arr) { return arr[rand(arr.length)]; }
+
+/* ── MODE SELECTION ───────────────────────────────────── */
+document.getElementById('mode-bar').addEventListener('click', e => {
+  const btn = e.target.closest('button[data-mode]');
+  if (!btn) return;
+  document.querySelectorAll('.mode-bar button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  currentMode = btn.dataset.mode;
+  newGame();
+});
+
+function updateModeInfo() {
+  document.getElementById('mode-info').innerHTML = cfg.desc;
+}
+
+/* ── GRID SIZING ──────────────────────────────────────── */
+function computeCellSize() {
+  const maxW = Math.min(window.innerWidth - 20, 400);
+  const maxH = Math.min(window.innerHeight * 0.38, 360);
+  const fromW = Math.floor((maxW - (N - 1) * 2) / N);
+  const fromH = Math.floor((maxH - (N - 1) * 2) / N);
+  return Math.max(32, Math.min(fromW, fromH, 80));
+}
+
+function applyGridSize() {
+  const sz = computeCellSize();
+  document.documentElement.style.setProperty('--cell-size', sz + 'px');
+  const grid = document.getElementById('grid');
+  grid.style.gridTemplateColumns = `repeat(${N}, ${sz}px)`;
+  grid.style.gridTemplateRows = `repeat(${N}, ${sz}px)`;
+}
+
+/* ── GAME INIT ────────────────────────────────────────── */
+function newGame() {
+  cfg = MODES[currentMode];
+  N = cfg.gridSize;
+  updateModeInfo();
+  applyGridSize();
+
+  world = Array.from({length: N}, () => Array.from({length: N}, () => ({})));
+  visited = Array.from({length: N}, () => Array(N).fill(false));
+  kb = Array.from({length: N}, () => Array.from({length: N}, () => ({safe: false, pit: null, wumpus: null})));
+  perceivedWorld = Array.from({length: N}, () => Array.from({length: N}, () => ({})));
+
+  const startR = N - 1, startC = 0;
+  agent = {r: startR, c: startC};
+  score = 0; arrows = 1; hasGold = false; wumpusAlive = cfg.wumpusCount; gameOver = false; moveCount = 0;
+  facing = 'right'; // textbook: agent starts facing right
+
+  // Place wumpi
+  for (let w = 0; w < cfg.wumpusCount; w++) {
+    let wr, wc;
+    do { wr = rand(N); wc = rand(N); } while ((wr === startR && wc === startC) || world[wr][wc].wumpus);
+    world[wr][wc].wumpus = true;
+  }
+
+  // Place pits FIRST (so gold placement can avoid them)
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (!(r === startR && c === startC) && Math.random() < cfg.pitProb)
+        world[r][c].pit = true;
+
+  // Place gold — must be REACHABLE from start (pits block permanently, wumpus can be killed)
+  // BFS to find all cells the agent could possibly reach
+  const reachable = Array.from({length: N}, () => Array(N).fill(false));
+  const bfsQ = [[startR, startC]];
+  reachable[startR][startC] = true;
+  while (bfsQ.length) {
+    const [br, bc] = bfsQ.shift();
+    for (const [nr, nc] of neighbors(br, bc)) {
+      if (!reachable[nr][nc] && !world[nr][nc].pit) {
+        reachable[nr][nc] = true;
+        bfsQ.push([nr, nc]);
+      }
+    }
+  }
+  // Collect valid gold candidates: reachable, not start, not pit, not wumpus
+  const goldCandidates = [];
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (reachable[r][c] && !(r === startR && c === startC) && !world[r][c].pit && !world[r][c].wumpus)
+        goldCandidates.push([r, c]);
+
+  // If no reachable candidates (extremely rare), regenerate entire world
+  if (goldCandidates.length === 0) { newGame(); return; }
+
+  const [gr, gc] = goldCandidates[rand(goldCandidates.length)];
+  world[gr][gc].gold = true;
+
+  // Compute TRUE percepts
+  computePercepts();
+
+  // Compute what agent perceives at start (possibly noisy)
+  visited[startR][startC] = true;
+  kb[startR][startC].safe = true;
+  perceiveCell(startR, startC);
+  updateKB();
+
+  setMsg('You enter the cave at [1,1]. Good luck!');
+  render();
+}
+
+function computePercepts() {
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      const adj = neighbors(r, c);
+      world[r][c].stench = adj.some(([ar, ac]) => world[ar][ac].wumpus);
+      world[r][c].breeze = adj.some(([ar, ac]) => world[ar][ac].pit);
+      world[r][c].glitter = !!world[r][c].gold;
+    }
+}
+
+function perceiveCell(r, c) {
+  // In noisy mode, stench and breeze can flip (neighbor-based inferences).
+  // Glitter is NEVER noisy — it's a same-cell percept (you see/touch the gold).
+  // Per book Ch. 15: sensor noise applies to indirect observations, not direct ones.
+  if (cfg.noisySensors) {
+    const flip = () => Math.random() < cfg.noiseProb;
+    perceivedWorld[r][c].stench = flip() ? !world[r][c].stench : world[r][c].stench;
+    perceivedWorld[r][c].breeze = flip() ? !world[r][c].breeze : world[r][c].breeze;
+    perceivedWorld[r][c].glitter = world[r][c].glitter; // always accurate
+  } else {
+    perceivedWorld[r][c].stench = world[r][c].stench;
+    perceivedWorld[r][c].breeze = world[r][c].breeze;
+    perceivedWorld[r][c].glitter = world[r][c].glitter;
+  }
+}
+
+/* ── HELPERS ──────────────────────────────────────────── */
+function neighbors(r, c) {
+  const n = [];
+  if (r > 0) n.push([r-1, c]);
+  if (r < N-1) n.push([r+1, c]);
+  if (c > 0) n.push([r, c-1]);
+  if (c < N-1) n.push([r, c+1]);
+  return n;
+}
+
+function toCoord(r, c) { return `[${N - r},${c + 1}]`; }
+
+function setMsg(txt, cls='') {
+  const el = document.getElementById('msg');
+  el.textContent = txt; el.className = 'message ' + cls;
+}
+
+function turn(dir) {
+  if (gameOver) return;
+  const idx = TURN_ORDER.indexOf(facing);
+  if (dir === 'right') facing = TURN_ORDER[(idx + 1) % 4];
+  else facing = TURN_ORDER[(idx + 3) % 4];
+  score -= 1; moveCount++;
+  setMsg(`Turned ${dir}. Now facing ${facing}. ${FACING_ARROWS[facing]}`);
+  render();
+}
+
+/* ── MOVE ─────────────────────────────────────────────── */
+function move(dir) {
+  if (gameOver) return;
+  let {r, c} = agent;
+  let intendedR = r, intendedC = c;
+
+  // Update facing direction on every move
+  facing = dir;
+
+  if (dir === 'up') intendedR--;
+  else if (dir === 'down') intendedR++;
+  else if (dir === 'left') intendedC--;
+  else if (dir === 'right') intendedC++;
+
+  let finalR = intendedR, finalC = intendedC;
+  let slipped = false;
+
+  // Stochastic mode: chance of slipping
+  if (cfg.stochastic && Math.random() < cfg.slipChance) {
+    const adj = neighbors(r, c);
+    if (adj.length > 0) {
+      const [sr, sc] = pick(adj);
+      finalR = sr; finalC = sc;
+      slipped = true;
+    }
+  }
+
+  // Wall check
+  if (finalR < 0 || finalR >= N || finalC < 0 || finalC >= N) {
+    if (slipped) {
+      setMsg('You slipped but hit a wall! (stochastic)', 'slip');
+    } else {
+      setMsg('Bump! You hit a wall.');
+    }
+    score -= 1; moveCount++; updateUI(); return;
+  }
+
+  agent = {r: finalR, c: finalC};
+  score -= 1; moveCount++;
+  visited[finalR][finalC] = true;
+  kb[finalR][finalC].safe = true;
+  kb[finalR][finalC].pit = false;
+  kb[finalR][finalC].wumpus = false;
+
+  // Check death
+  if (world[finalR][finalC].pit) {
+    endGame(false, slipped
+      ? `You slipped into a pit at ${toCoord(finalR,finalC)}! 💀`
+      : 'You fell into a pit! 💀');
+    return;
+  }
+  if (world[finalR][finalC].wumpus && wumpusAlive > 0) {
+    endGame(false, slipped
+      ? `You slipped into the Wumpus at ${toCoord(finalR,finalC)}! 💀`
+      : 'The Wumpus got you! 💀');
+    return;
+  }
+
+  // Perceive this cell (possibly noisy)
+  perceiveCell(finalR, finalC);
+
+  // Build message
+  const p = perceivedWorld[finalR][finalC];
+  const percepts = [];
+  if (p.stench) percepts.push('🟢 Stench');
+  if (p.breeze) percepts.push('💨 Breeze');
+  if (p.glitter) percepts.push('✨ Glitter');
+  if (world[finalR][finalC].wumpus && wumpusAlive <= 0) percepts.push('☠️ Dead Wumpus');
+
+  let prefix = toCoord(finalR, finalC);
+  if (slipped) prefix = `⚠️ SLIPPED to ${prefix}`;
+  const msgCls = slipped ? 'slip' : '';
+  const msg = percepts.length ? `${prefix}: ${percepts.join(', ')}` : `${prefix}: Nothing here.`;
+
+  // Noisy warning
+  const noisyNote = cfg.noisySensors ? ' (sensors may lie!)' : '';
+  setMsg(msg + noisyNote, msgCls);
+
+  updateKB();
+  render();
+}
+
+/* ── ACTIONS ──────────────────────────────────────────── */
+function grab() {
+  if (gameOver) return;
+  const {r, c} = agent;
+  if (world[r][c].gold) {
+    hasGold = true;
+    world[r][c].gold = false;
+    world[r][c].glitter = false;
+    perceivedWorld[r][c].glitter = false;
+    setMsg('You grabbed the GOLD! ✨ Now climb out at [1,1]!', 'win');
+  } else {
+    setMsg('Nothing to grab here.');
+  }
+  score -= 1; render();
+}
+
+function shoot() {
+  if (gameOver) return;
+  if (arrows <= 0) { setMsg('No arrows left!', 'warn'); return; }
+  arrows--; score -= 10;
+
+  // Arrow flies in a STRAIGHT LINE in the facing direction until it hits a wumpus or wall
+  const [dr, dc] = FACING_DELTA[facing];
+  let ar = agent.r + dr, ac = agent.c + dc;
+  let hit = false;
+
+  while (ar >= 0 && ar < N && ac >= 0 && ac < N) {
+    if (world[ar][ac].wumpus && wumpusAlive > 0) {
+      world[ar][ac].wumpus = false;
+      wumpusAlive--; hit = true;
+      computePercepts();
+      for (let r2 = 0; r2 < N; r2++)
+        for (let c2 = 0; c2 < N; c2++)
+          if (visited[r2][c2]) perceiveCell(r2, c2);
+      break;
+    }
+    ar += dr; ac += dc; // keep flying
+  }
+
+  if (hit) {
+    const extra = wumpusAlive > 0 ? ` (${wumpusAlive} Wumpus remaining)` : '';
+    setMsg(`🎯 SCREAM! Arrow hit facing ${facing}! Wumpus is dead!${extra}`, 'win');
+    for (let r = 0; r < N; r++)
+      for (let c = 0; c < N; c++)
+        if (!world[r][c].wumpus) kb[r][c].wumpus = false;
+  } else {
+    setMsg(`Arrow flies ${facing} into darkness... missed.`, 'warn');
+  }
+  updateKB(); render();
+}
+
+function climb() {
+  if (gameOver) return;
+  const startR = N - 1;
+  if (agent.r !== startR || agent.c !== 0) {
+    setMsg('You can only climb out at [1,1]!', 'warn');
+    score -= 1; render(); return;
+  }
+  if (hasGold) {
+    score += 1000;
+    endGame(true, `You escaped with the gold! 🏆`);
+  } else {
+    endGame(true, `You climbed out without the gold.`);
+  }
+}
+
+function endGame(won, msg) {
+  gameOver = true;
+  if (!won) score -= 1000;
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) visited[r][c] = true;
+  render();
+
+  const ov = document.getElementById('overlay');
+  document.getElementById('overlay-title').textContent = won ? '🎉 Escaped!' : '💀 Game Over';
+  document.getElementById('overlay-result').textContent =
+    `${msg}\nMode: ${cfg.name} · Moves: ${moveCount} · Final score: ${score}`;
+  ov.classList.add('show');
+}
+
+/* ── KNOWLEDGE BASE ───────────────────────────────────── */
+function updateKB() {
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (!visited[r][c]) continue;
+      const adj = neighbors(r, c);
+      const p = perceivedWorld[r][c]; // use perceived (possibly noisy) data
+      if (!p.breeze)
+        for (const [ar, ac] of adj) kb[ar][ac].pit = false;
+      if (!p.stench)
+        for (const [ar, ac] of adj) kb[ar][ac].wumpus = false;
+      for (const [ar, ac] of adj) {
+        if (kb[ar][ac].pit === false && kb[ar][ac].wumpus === false)
+          kb[ar][ac].safe = true;
+      }
+    }
+  renderKB();
+}
+
+function renderKB() {
+  let html = '<b>Knowledge Base</b>';
+  if (cfg.noisySensors) html += ' <span style="color:#ff9800">(⚠️ sensors unreliable!)</span>';
+  html += ':<br>';
+  let count = 0;
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      if (visited[r][c] || kb[r][c].safe) continue;
+      const k = kb[r][c];
+      const tags = [];
+      if (k.pit === null) tags.push('❓pit?');
+      else if (k.pit === false) tags.push('🚫pit');
+      if (k.wumpus === null) tags.push('❓wumpus?');
+      else if (k.wumpus === false) tags.push('🚫wumpus');
+      if (tags.length) { html += `${toCoord(r,c)}: ${tags.join(' ')}<br>`; count++; }
+    }
+  if (count === 0) html += 'All reachable cells explored or inferred safe.';
+  document.getElementById('kb').innerHTML = html;
+}
+
+/* ── RENDER ───────────────────────────────────────────── */
+function render() {
+  applyGridSize();
+  const sz = computeCellSize();
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.style.width = sz + 'px';
+      cell.style.height = sz + 'px';
+
+      const isAgent = (agent.r === r && agent.c === c);
+      if (visited[r][c]) cell.classList.add('visited');
+      if (isAgent && !gameOver) cell.classList.add('current');
+      // Highlight cells with gold (pulsing glow so player can't miss it)
+      if (world[r][c].gold && visited[r][c]) cell.classList.add('glitter-cell');
+
+      // Entity font sizes scale with cell
+      const entFs = Math.max(12, sz * 0.35);
+      const lblFs = Math.max(7, sz * 0.14);
+      const percFs = Math.max(8, sz * 0.17);
+
+      let entity = '', label = toCoord(r, c);
+
+      if (isAgent && !gameOver) {
+        entity = FACING_ARROWS[facing];
+      } else if (visited[r][c] || gameOver) {
+        const parts = [];
+        if (world[r][c].wumpus) parts.push(wumpusAlive > 0 ? '👹' : '☠️');
+        if (world[r][c].pit) parts.push('🕳️');
+        if (world[r][c].gold) parts.push('✨');
+        if (isAgent && gameOver) parts.push('🧑');
+        entity = parts.join('');
+      } else {
+        const k = kb[r][c];
+        entity = k.safe ? '✅' : '❓';
+        // In noisy mode, highlight cells where KB might be wrong
+        if (cfg.noisySensors && !k.safe && (k.pit === false || k.wumpus === false))
+          cell.classList.add('noisy-hint');
+      }
+
+      cell.innerHTML =
+        `<span class="entity" style="font-size:${entFs}px">${entity}</span>` +
+        `<span class="label" style="font-size:${lblFs}px">${label}</span>`;
+
+      // Percepts (show perceived, not true — in noisy mode they may differ)
+      if (visited[r][c] || gameOver) {
+        const src = (gameOver && !cfg.noisySensors) ? world[r][c] : (perceivedWorld[r][c] || world[r][c]);
+        const percs = [];
+        if (src.stench) percs.push('🟢');
+        if (src.breeze) percs.push('💨');
+        if (src.glitter) percs.push('✨');
+        if (percs.length)
+          cell.innerHTML += `<span class="percepts" style="font-size:${percFs}px">${percs.join('')}</span>`;
+      }
+
+      grid.appendChild(cell);
+    }
+  updateUI();
+}
+
+function updateUI() {
+  document.getElementById('score').textContent = `Score: ${score}`;
+  document.getElementById('arrows').textContent = `🏹 ${arrows}`;
+  document.getElementById('has-gold').textContent = hasGold ? '💰 Yes!' : '💰 No';
+  document.getElementById('moves-count').textContent = `🦶 ${moveCount}`;
+  document.getElementById('facing-dir').textContent = `🧭 ${FACING_ARROWS[facing]}`;
+  document.getElementById('btn-shoot').disabled = arrows <= 0 || gameOver;
+  document.getElementById('btn-grab').disabled = gameOver;
+  document.getElementById('btn-climb').disabled = gameOver;
+}
+
+/* ── INPUT ────────────────────────────────────────────── */
+document.addEventListener('keydown', e => {
+  const k = e.key;
+  if (k === 'ArrowUp' || k === 'w') { e.preventDefault(); move('up'); }
+  else if (k === 'ArrowDown' || k === 's') { e.preventDefault(); move('down'); }
+  else if (k === 'ArrowLeft' || k === 'a') { e.preventDefault(); move('left'); }
+  else if (k === 'ArrowRight' || k === 'd') { e.preventDefault(); move('right'); }
+  else if (k === 'q') turn('left');
+  else if (k === 'e') turn('right');
+  else if (k === 'g') grab();
+  else if (k === 'f') shoot();
+  else if (k === 'c') climb();
+});
+
+let touchStartX, touchStartY;
+document.addEventListener('touchstart', e => {
+  touchStartX = e.changedTouches[0].screenX;
+  touchStartY = e.changedTouches[0].screenY;
+}, {passive: true});
+document.addEventListener('touchend', e => {
+  const dx = e.changedTouches[0].screenX - touchStartX;
+  const dy = e.changedTouches[0].screenY - touchStartY;
+  const absDx = Math.abs(dx), absDy = Math.abs(dy);
+  if (Math.max(absDx, absDy) < 30) return;
+  if (absDx > absDy) move(dx > 0 ? 'right' : 'left');
+  else move(dy > 0 ? 'down' : 'up');
+}, {passive: true});
+
+document.getElementById('kb-toggle').addEventListener('click', () => {
+  const el = document.getElementById('kb');
+  el.classList.toggle('show');
+  document.getElementById('kb-toggle').textContent =
+    el.classList.contains('show') ? '▼ Knowledge Base' : '▶ Knowledge Base';
+});
+
+document.getElementById('rules-toggle').addEventListener('click', () => {
+  const el = document.getElementById('rules-body');
+  el.classList.toggle('show');
+  document.getElementById('rules-toggle').textContent =
+    el.classList.contains('show') ? '📋 Hide Rules & Controls' : '📋 Rules & Controls';
+});
+
+document.getElementById('guide-toggle').addEventListener('click', () => {
+  const el = document.getElementById('guide-body');
+  el.classList.toggle('show');
+  document.getElementById('guide-toggle').textContent =
+    el.classList.contains('show') ? '📚 Hide Study Guide' : '📚 Study Guide — Textbook Reference';
+});
+
+window.addEventListener('resize', () => { if (world) render(); });
+
+/* ── OFFLINE PWA ──────────────────────────────────────── */
+if ('serviceWorker' in navigator) {
+  const swBlob = new Blob([`
+    const CACHE = 'wumpus-v2';
+    self.addEventListener('install', e => {
+      e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/'])).catch(()=>{}));
+      self.skipWaiting();
+    });
+    self.addEventListener('fetch', e => {
+      e.respondWith(caches.match(e.request).then(r => r || fetch(e.request)));
+    });
+  `], {type: 'application/javascript'});
+  navigator.serviceWorker.register(URL.createObjectURL(swBlob)).catch(() => {});
+}
+
+newGame();
+</script>
+</body>
+</html>
