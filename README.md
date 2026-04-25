@@ -1,91 +1,60 @@
-# Wumpus World — Interactive AI Textbook Companion
+# Wumpus World
 
-A fully interactive, browser-based implementation of the **Wumpus World** environment from **Russell & Norvig's *AI: A Modern Approach*** (Section 7.2). Built as a single offline-capable HTML file — no dependencies, no build step.
+Browser-based Wumpus World game from Russell & Norvig's *AI: A Modern Approach* (Section 7.2). Everything runs from a single HTML file, no build step or dependencies needed. Works offline, works on phones.
 
-![Game Modes](https://img.shields.io/badge/modes-5-blue) ![Tests](https://img.shields.io/badge/tests-64%2C913%20passed-brightgreen) ![Offline](https://img.shields.io/badge/offline-PWA-orange)
+Built this to have something playable while studying the logical inference chapters. The five modes cover the main variants discussed in the textbook.
 
-## Why This Exists
+## Game Modes
 
-The Wumpus World is the canonical teaching environment for **logical inference under uncertainty** in AI courses worldwide. This project makes it tangible — students can play the game, observe percepts, and practice the exact reasoning from Chapters 7, 13, and beyond.
+| Mode | Grid | Sensors | Movement | Wumpi | Chapter |
+|------|------|---------|----------|-------|---------|
+| Classic | 4×4 | Perfect | Deterministic | 1 | Ch. 7 |
+| Stochastic | 4×4 | Perfect | 20% slip | 1 | Ch. 13 |
+| Noisy Sensors | 4×4 | Stench/Breeze flip 10% | Deterministic | 1 | Ch. 13 |
+| Large Cave | 6×6 | Perfect | Deterministic | 2 | - |
+| Nightmare | 6×6 | Noisy | 20% slip | 2 | All of the above |
 
-## Features
+## Mechanics
 
-### 5 Textbook-Accurate Game Modes
+Follows the textbook rules closely:
 
-| Mode | Grid | Sensors | Movement | Wumpi | Reference |
-|------|------|---------|----------|-------|-----------|
-| **Classic** | 4×4 | Perfect | Deterministic | 1 | Ch. 7 — Logical Agents |
-| **Stochastic** | 4×4 | Perfect | 20% slip | 1 | Ch. 13 — Probabilistic Reasoning |
-| **Noisy Sensors** | 4×4 | Stench/Breeze flip 10% | Deterministic | 1 | Ch. 13 — Sensor Models |
-| **Large Cave** | 6×6 | Perfect | Deterministic | 2 | Scaled environment |
-| **Nightmare** | 6×6 | Noisy | 20% slip | 2 | All challenges combined |
+- Stench when adjacent to Wumpus, breeze when adjacent to pit, glitter when on the gold cell
+- Agent has a facing direction. Arrow shoots straight in that direction until it hits something or a wall
+- Scoring: +1000 for escaping with gold, -1000 for death, -1 per action, -10 per arrow
+- Gold is always placed on a cell reachable from the start (BFS check, pits block movement)
 
-### Game Mechanics (100% Textbook-Aligned)
+There's also a knowledge base overlay that shows inferred safe/unsafe cells, a hint system that nudges you toward the right logical deductions, and a collapsible study guide with chapter references.
 
-- **Percepts**: Stench (adjacent to Wumpus), Breeze (adjacent to pit), Glitter (on gold cell)
-- **Actions**: Move (4 directions), Turn Left/Right, Grab, Shoot, Climb
-- **Directional arrow**: Flies straight in facing direction until hitting Wumpus or wall
-- **Scoring**: +1000 escape with gold, −1000 death, −1 per action, −10 per arrow
-- **Gold placement**: BFS-guaranteed reachable from start cell (pits block, Wumpus can be killed)
+## How to Play
 
-### Pedagogical Tools
-
-- **Knowledge Base**: Real-time display of inferred safe/unsafe cells
-- **Context-Sensitive Hints**: Togglable hints teaching logical reasoning from Section 7.2
-- **Study Guide**: Collapsible textbook reference with formulas and chapter citations
-- **Rules & Controls**: In-game reference panel
-
-### Technical
-
-- **Single HTML file** — zero dependencies, works offline
-- **Mobile-friendly** — touch controls, responsive layout
-- **PWA-capable** — installable on phones for study sessions
-- **Exhaustively tested** — 64,913 automated assertions + 1,520 Playwright browser gameplay tests across all modes
-
-## Play
-
-Open `index.html` in any browser. That's it.
+Open `index.html` in a browser.
 
 ```bash
-# Or serve locally
+# or serve it
 python3 -m http.server 8000
-# → http://localhost:8000/index.html
 ```
-
-## Testing
-
-The simulation suite validates every textbook rule:
-
-```bash
-node simulate.js
-```
-
-Verifies:
-- World generation constraints (start cell safety, gold reachability via BFS)
-- Percept accuracy (stench, breeze, glitter, noisy sensor flipping)
-- All agent actions (move, turn, shoot, grab, climb)
-- Scoring arithmetic (perfect game = 995 points)
-- Stochastic mechanics (~20% slip rate)
-- Noisy sensors (stench/breeze flip, glitter never flips)
-- Edge cases (wall bumps, dead wumpus traversal, post-game-over blocking)
 
 ## Controls
 
 | Action | Keyboard | Mobile |
 |--------|----------|--------|
 | Move | Arrow keys / WASD | Direction buttons |
-| Turn Left | Q | ↩ button |
-| Turn Right | E | ↪ button |
+| Turn Left/Right | Q / E | ↩ ↪ buttons |
 | Grab gold | G | ✋ Grab |
 | Shoot arrow | F | 🏹 Shoot |
 | Climb out | C | 🧗 Climb |
 
+## Tests
+
+`simulate.js` runs ~65k assertions covering world generation, percepts, movement, turning, shooting, grabbing, climbing, scoring, stochastic slip rates, noisy sensor flipping, coordinate mapping, and edge cases. Also ran 1500+ automated playthroughs in Playwright across all modes.
+
+```bash
+node simulate.js
+```
+
 ## References
 
-- Russell, S. & Norvig, P. (2020). *Artificial Intelligence: A Modern Approach* (4th ed.). Pearson.
-  - Section 7.2: The Wumpus World
-  - Section 7.4: Propositional Logic
-  - Section 13.1: Uncertainty and Probabilistic Reasoning
+Russell, S. & Norvig, P. (2020). *Artificial Intelligence: A Modern Approach* (4th ed.), Sections 7.2, 7.4, 13.1.
 
 ## License
 
