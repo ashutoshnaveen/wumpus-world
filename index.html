@@ -1082,6 +1082,101 @@ document.getElementById('guide-toggle').addEventListener('click', () => {
 
 window.addEventListener('resize', () => { if (world) render(); });
 
+/* ── HINT SYSTEM ─────────────────────────────────────────── */
+let hintOn = false, hintIdx = 0, hintList = [];
+
+function toggleHints() {
+  hintOn = !hintOn;
+  const btn = document.getElementById('hint-toggle');
+  btn.textContent = hintOn ? '💡 Hints: On' : '💡 Hints: Off';
+  btn.classList.toggle('active', hintOn);
+  document.getElementById('hint-next').style.display = hintOn ? '' : 'none';
+  if (hintOn) { hintList = getHints(); hintIdx = 0; showHint(); }
+  else { document.getElementById('hint-box').classList.remove('show'); }
+}
+
+function showNextHint() {
+  hintIdx++;
+  if (hintIdx >= hintList.length) { hintList = getHints(); hintIdx = 0; }
+  showHint();
+}
+
+function showHint() {
+  const box = document.getElementById('hint-box');
+  if (!hintList.length) {
+    box.innerHTML = '<span class="hint-icon">💡</span> <span class="hint-text">No hints available right now.</span>';
+    box.classList.add('show');
+    return;
+  }
+  const h = hintList[hintIdx % hintList.length];
+  box.innerHTML = `<span class="hint-icon">💡</span> <span class="hint-text">${h.text}</span>` +
+    (h.ref ? `<span class="hint-ref">${h.ref}</span>` : '') +
+    (h.logic ? `<span class="hint-logic">${h.logic}</span>` : '');
+  box.classList.add('show');
+}
+
+function getHints() {
+  if (gameOver || !world) return [];
+  const hints = [];
+  const pr = agent.r, pc = agent.c;
+  const p = perceivedWorld[pr][pc];
+
+  // Glitter hint
+  if (p.glitter && !hasGold)
+    hints.push({ text: 'You see glitter! Use Grab (G) to pick up the gold.', ref: 'Section 7.2 — Percept: Glitter' });
+
+  // Have gold — go home
+  if (hasGold)
+    hints.push({ text: 'You have the gold! Navigate back to [1,1] and Climb out.', ref: 'Section 7.2 — Optimal strategy' });
+
+  // At start with gold
+  if (hasGold && pr === N - 1 && pc === 0)
+    hints.push({ text: 'You\'re at the exit with gold! Press Climb (C) to win.', ref: '' });
+
+  // Breeze analysis
+  if (p.breeze) {
+    const adj = neighbors(pr, pc);
+    const unknown = adj.filter(([r, c]) => !visited[r][c] && kb[r][c].pit !== false);
+    const safe = adj.filter(([r, c]) => !visited[r][c] && kb[r][c].pit === false);
+    if (unknown.length === 1)
+      hints.push({ text: `Breeze here! Only ${toCoord(unknown[0][0], unknown[0][1])} is uncleared — it likely has a pit.`, ref: 'Section 7.4 — Propositional inference', logic: 'KB ⊨ Breeze ∧ all-other-adj-safe → Pit' });
+    else if (unknown.length > 1)
+      hints.push({ text: `Breeze detected. ${unknown.length} adjacent cells are unvisited — can't pinpoint the pit yet.`, ref: 'Section 7.3 — Incomplete knowledge' });
+    if (safe.length > 0)
+      hints.push({ text: `Despite the breeze, ${safe.map(([r,c]) => toCoord(r,c)).join(', ')} ${safe.length === 1 ? 'is' : 'are'} known safe.`, ref: 'Section 7.4 — KB inference' });
+  }
+
+  // Stench analysis
+  if (p.stench) {
+    const adj = neighbors(pr, pc);
+    const unknown = adj.filter(([r, c]) => !visited[r][c] && kb[r][c].wumpus !== false);
+    if (unknown.length === 1 && arrows > 0)
+      hints.push({ text: `Stench with one uncleared neighbor: Wumpus is at ${toCoord(unknown[0][0], unknown[0][1])}. Face it and shoot!`, ref: 'Section 7.4 — Definite inference', logic: 'KB ⊨ Stench ∧ all-other-adj-¬W → Wumpus' });
+    else if (unknown.length > 1)
+      hints.push({ text: `Stench detected. ${unknown.length} candidates for the Wumpus — gather more data.`, ref: 'Section 7.3 — Disjunctive knowledge' });
+  }
+
+  // No percepts — safe to explore
+  if (!p.breeze && !p.stench) {
+    const adj = neighbors(pr, pc).filter(([r, c]) => !visited[r][c]);
+    if (adj.length > 0)
+      hints.push({ text: `No breeze, no stench. All adjacent cells (${adj.map(([r,c]) => toCoord(r,c)).join(', ')}) are safe to visit.`, ref: 'Section 7.4 — Modus Ponens on ¬Breeze → ¬Pit(adj)' });
+  }
+
+  // Explore safe unvisited
+  const safeFrontier = [];
+  for (let r = 0; r < N; r++)
+    for (let c = 0; c < N; c++)
+      if (!visited[r][c] && kb[r][c].safe) safeFrontier.push(toCoord(r, c));
+  if (safeFrontier.length > 0 && !hasGold)
+    hints.push({ text: `Safe unvisited cells: ${safeFrontier.slice(0, 4).join(', ')}. Explore them to find the gold.`, ref: 'Section 7.2 — Agent program' });
+
+  if (hints.length === 0)
+    hints.push({ text: 'Consider the percepts carefully and cross-reference with your knowledge base.', ref: 'Section 7.4 — Logical reasoning' });
+
+  return hints;
+}
+
 /* ── OFFLINE PWA ──────────────────────────────────────── */
 if ('serviceWorker' in navigator) {
   const swBlob = new Blob([`

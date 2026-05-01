@@ -25,6 +25,17 @@ Follows the textbook rules closely:
 
 There's also a knowledge base overlay that shows inferred safe/unsafe cells, a hint system that nudges you toward the right logical deductions, and a collapsible study guide with chapter references.
 
+## AI Agent
+
+Click "Watch AI Play" to hand control to an automated agent. Two modes:
+
+- **KB Agent (Ch. 7)** — pure propositional logic. Tracks which cells are provably safe (`KB ⊨ ¬Pit ∧ ¬Wumpus`), deduces Wumpus location by elimination, navigates to shoot when it has line of sight. Retreats to [1,1] when no safe frontier remains.
+- **KB + Probabilistic (Ch. 13)** — same KB core, but when the safe frontier is exhausted it estimates `P(pit)` and `P(wumpus)` for each unknown cell using constraint propagation from adjacent breeze/stench observations. Takes the lowest-risk move if danger is below threshold, otherwise retreats.
+
+Controls: step-through, auto-play (slow/normal/fast/turbo), pause, reset. The reasoning panel shows every decision with the propositional logic or probability estimate behind it. Probability overlays appear on unexplored cells when the probabilistic agent is selected.
+
+Stats dashboard tracks games played, wins, win rate, and average score across runs. Over 100 Classic-mode games the KB+Prob agent wins about 50% with a positive average score.
+
 ## How to Play
 
 Open `index.html` in a browser.
