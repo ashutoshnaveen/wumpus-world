@@ -219,6 +219,75 @@
   .guide-body ul { margin: 4px 0 4px 16px; }
   .guide-body li { margin: 2px 0; }
 
+  /* AI Agent Panel */
+  .ai-panel {
+    width: 100%; max-width: 400px; margin-bottom: 8px;
+    border: 1px solid #333; border-radius: 10px; overflow: hidden;
+    background: var(--surface);
+  }
+  .ai-panel.hidden { display: none; }
+  .ai-controls {
+    display: flex; gap: 4px; padding: 6px 8px; align-items: center;
+    flex-wrap: wrap; border-bottom: 1px solid #333;
+  }
+  .ai-controls button {
+    background: #1a1a2e; color: var(--text); border: 1px solid #555;
+    border-radius: 8px; padding: 5px 10px; font-size: 0.7rem; cursor: pointer;
+    transition: all 0.12s; touch-action: manipulation;
+  }
+  .ai-controls button:active { transform: scale(0.95); }
+  .ai-controls button.active { background: #0f3460; border-color: var(--gold); color: var(--gold); }
+  .ai-controls button:disabled { opacity: 0.3; cursor: default; }
+  .ai-controls select {
+    background: #1a1a2e; color: var(--text); border: 1px solid #555;
+    border-radius: 6px; padding: 4px 6px; font-size: 0.68rem;
+  }
+  .ai-controls .ai-label {
+    font-size: 0.65rem; opacity: 0.6; margin-left: auto;
+  }
+  .ai-stats {
+    display: flex; gap: 8px; padding: 4px 8px; font-size: 0.65rem;
+    flex-wrap: wrap; border-bottom: 1px solid #333; background: #111;
+  }
+  .ai-stats span { opacity: 0.8; }
+  .ai-stats .stat-val { color: var(--gold); font-weight: bold; }
+  .ai-reasoning {
+    max-height: 140px; overflow-y: auto; padding: 6px 8px;
+    font-size: 0.67rem; line-height: 1.5; font-family: 'Courier New', monospace;
+    background: #0a0a1a;
+  }
+  .ai-reasoning .step {
+    padding: 2px 0; border-bottom: 1px solid #1a1a2e;
+  }
+  .ai-reasoning .step-num { color: var(--gold); font-weight: bold; }
+  .ai-reasoning .step-action { color: #4fc3f7; }
+  .ai-reasoning .step-logic { color: #aaa; font-size: 0.62rem; }
+  .ai-reasoning .step-prob { color: #ff9800; }
+  .ai-reasoning .step-safe { color: #4caf50; }
+  .ai-reasoning .step-danger { color: var(--accent); }
+
+  .ai-toggle-bar {
+    display: flex; gap: 6px; align-items: center; margin-bottom: 5px;
+    max-width: 400px; width: 100%;
+  }
+  .ai-toggle-bar button {
+    background: #0f3460; color: var(--text); border: 1px solid #555;
+    border-radius: 10px; padding: 6px 14px; font-size: 0.78rem; cursor: pointer;
+    transition: all 0.15s; touch-action: manipulation; font-weight: bold;
+  }
+  .ai-toggle-bar button:active { transform: scale(0.95); }
+  .ai-toggle-bar button.active { background: var(--accent); border-color: var(--accent); }
+
+  /* Probability overlay on cells */
+  .cell .prob-overlay {
+    position: absolute; top: 1px; left: 2px;
+    font-size: 0.5rem; font-family: 'Courier New', monospace;
+    line-height: 1.1; opacity: 0.9;
+  }
+  .cell .prob-pit { color: #ff5252; }
+  .cell .prob-wumpus { color: #4caf50; }
+  .cell .prob-safe { color: #4fc3f7; }
+
   .overlay {
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.88);
@@ -284,6 +353,39 @@
   <button onclick="shoot()" id="btn-shoot">🏹 Shoot</button>
   <button onclick="climb()" id="btn-climb">🧗 Climb</button>
   <button class="btn-new" onclick="newGame()">🔄 New</button>
+</div>
+
+<!-- ── AI AGENT ────────────────────────────────────── -->
+<div class="ai-toggle-bar">
+  <button id="ai-mode-toggle" onclick="toggleAIMode()">🤖 Watch AI Play</button>
+</div>
+<div class="ai-panel hidden" id="ai-panel">
+  <div class="ai-controls">
+    <button id="ai-step" onclick="aiStep()">⏭ Step</button>
+    <button id="ai-play" onclick="aiAutoPlay()">▶ Auto</button>
+    <button id="ai-pause" onclick="aiPause()" style="display:none">⏸ Pause</button>
+    <button id="ai-reset" onclick="aiReset()">🔄 Reset</button>
+    <select id="ai-speed" onchange="aiSetSpeed(this.value)">
+      <option value="800">Slow</option>
+      <option value="400" selected>Normal</option>
+      <option value="150">Fast</option>
+      <option value="50">Turbo</option>
+    </select>
+    <select id="ai-agent-type">
+      <option value="kb">KB Agent (Ch.7)</option>
+      <option value="prob" selected>KB + Probabilistic (Ch.13)</option>
+    </select>
+    <span class="ai-label">Agent</span>
+  </div>
+  <div class="ai-stats" id="ai-stats">
+    <span>Games: <span class="stat-val" id="ai-games">0</span></span>
+    <span>Wins: <span class="stat-val" id="ai-wins">0</span></span>
+    <span>Win%: <span class="stat-val" id="ai-winrate">-</span></span>
+    <span>Avg Score: <span class="stat-val" id="ai-avg-score">-</span></span>
+  </div>
+  <div class="ai-reasoning" id="ai-reasoning">
+    <div class="step"><span class="step-logic">Press Step or Auto to begin...</span></div>
+  </div>
 </div>
 
 <!-- ── RULES & CONTROLS ────────────────────────────── -->
@@ -1176,6 +1278,249 @@ function getHints() {
 
   return hints;
 }
+
+/* ══════════════════════════════════════════════════════════
+   AI AGENT — KB + Probabilistic (Russell & Norvig Ch. 7, 13)
+   ══════════════════════════════════════════════════════════ */
+
+let aiMode = false;
+let aiAutoInterval = null;
+let aiSpeed = 400;
+let aiStepNum = 0;
+let aiTotalGames = 0, aiTotalWins = 0, aiScoreSum = 0;
+// AI's own KB: what the agent has inferred
+let aiKB = null; // {safe: Set, unsafe: Set, frontier: Set, nopit: Set, nowumpus: Set, maywumpus: Set, maypit: Set, wumpusAlive: bool, wumpusLoc: [r,c]|null, hasArrow: bool, hasGold: bool, path: [], goldLoc: null}
+
+function toggleAIMode() {
+  aiMode = !aiMode;
+  const btn = document.getElementById('ai-mode-toggle');
+  const panel = document.getElementById('ai-panel');
+  btn.classList.toggle('active', aiMode);
+  btn.textContent = aiMode ? '🤖 AI Mode ON' : '🤖 Watch AI Play';
+  panel.classList.toggle('hidden', !aiMode);
+  if (aiMode) {
+    aiReset();
+  } else {
+    aiPause();
+  }
+}
+
+function aiSetSpeed(val) { aiSpeed = parseInt(val); }
+
+function aiReset() {
+  aiPause();
+  newGame();
+  aiStepNum = 0;
+  aiGameRecorded = false;
+  aiKB = initAIKB();
+  document.getElementById('ai-reasoning').innerHTML = '';
+  logAI('AI agent initialized. Observing [1,1]...', 'logic');
+  aiObserve();
+}
+
+function initAIKB() {
+  const startR = N - 1, startC = 0;
+  return {
+    safe: new Set([`${startR},${startC}`]),
+    visited: new Set([`${startR},${startC}`]),
+    nopit: new Set([`${startR},${startC}`]),
+    nowumpus: new Set([`${startR},${startC}`]),
+    maypit: new Set(),
+    maywumpus: new Set(),
+    frontier: new Set(),
+    wumpusAlive: wumpusAlive > 0,
+    wumpusLocs: new Set(), // confirmed wumpus locations
+    possibleWumpus: new Set(), // cells that could have wumpus
+    hasArrow: true,
+    hasGold: false,
+    goldLoc: null,
+    path: [], // for backtracking
+    returnPath: null, // pre-computed return path
+  };
+}
+
+function cellKey(r, c) { return `${r},${c}`; }
+function keyToRC(key) { const [r, c] = key.split(',').map(Number); return [r, c]; }
+
+function aiObserve() {
+  const {r, c} = agent;
+  const key = cellKey(r, c);
+  const ak = aiKB;
+  ak.visited.add(key);
+  ak.safe.add(key);
+  ak.nopit.add(key);
+  ak.nowumpus.add(key);
+  ak.maypit.delete(key);
+  ak.maywumpus.delete(key);
+  ak.frontier.delete(key);
+
+  const p = perceivedWorld[r][c];
+
+  // Add unvisited neighbors to frontier
+  for (const [nr, nc] of neighbors(r, c)) {
+    const nk = cellKey(nr, nc);
+    if (!ak.visited.has(nk)) {
+      ak.frontier.add(nk);
+    }
+  }
+
+  // KB inference from percepts
+  const adj = neighbors(r, c);
+  if (!p.breeze) {
+    for (const [nr, nc] of adj) {
+      ak.nopit.add(cellKey(nr, nc));
+      ak.maypit.delete(cellKey(nr, nc));
+    }
+  } else {
+    // breeze: adjacent cells *might* have pits (if not already known safe)
+    for (const [nr, nc] of adj) {
+      const nk = cellKey(nr, nc);
+      if (!ak.nopit.has(nk) && !ak.visited.has(nk)) ak.maypit.add(nk);
+    }
+  }
+
+  if (!p.stench) {
+    for (const [nr, nc] of adj) {
+      ak.nowumpus.add(cellKey(nr, nc));
+      ak.maywumpus.delete(cellKey(nr, nc));
+      ak.possibleWumpus.delete(cellKey(nr, nc));
+    }
+  } else {
+    for (const [nr, nc] of adj) {
+      const nk = cellKey(nr, nc);
+      if (!ak.nowumpus.has(nk) && !ak.visited.has(nk)) {
+        ak.maywumpus.add(nk);
+        ak.possibleWumpus.add(nk);
+      }
+    }
+  }
+
+  if (p.glitter) {
+    ak.goldLoc = [r, c];
+  }
+
+  // Derive safe cells: no pit AND no wumpus
+  for (const fk of ak.frontier) {
+    if (ak.nopit.has(fk) && ak.nowumpus.has(fk)) {
+      ak.safe.add(fk);
+    }
+  }
+
+  // Wumpus location deduction: if only one possible cell remains
+  if (ak.wumpusAlive && ak.possibleWumpus.size > 0) {
+    // Remove cells we know have no wumpus
+    for (const pw of [...ak.possibleWumpus]) {
+      if (ak.nowumpus.has(pw)) ak.possibleWumpus.delete(pw);
+    }
+    if (ak.possibleWumpus.size === 1) {
+      const wloc = [...ak.possibleWumpus][0];
+      ak.wumpusLocs.add(wloc);
+      // All OTHER frontier cells are now wumpus-free
+      for (const fk of ak.frontier) {
+        if (fk !== wloc) ak.nowumpus.add(fk);
+      }
+      // Re-derive safe
+      for (const fk of ak.frontier) {
+        if (ak.nopit.has(fk) && ak.nowumpus.has(fk)) ak.safe.add(fk);
+      }
+    }
+  }
+}
+
+// BFS shortest path from (sr,sc) to (tr,tc) through visited/safe cells only
+function aiBFSPath(sr, sc, tr, tc, allowedSet) {
+  const startKey = cellKey(sr, sc);
+  const targetKey = cellKey(tr, tc);
+  if (startKey === targetKey) return [];
+  const parent = new Map();
+  const queue = [startKey];
+  parent.set(startKey, null);
+  while (queue.length) {
+    const cur = queue.shift();
+    const [cr, cc] = keyToRC(cur);
+    for (const [nr, nc] of neighbors(cr, cc)) {
+      const nk = cellKey(nr, nc);
+      if (!parent.has(nk) && (allowedSet.has(nk) || nk === targetKey)) {
+        parent.set(nk, cur);
+        if (nk === targetKey) {
+          // reconstruct
+          const path = [];
+          let k = targetKey;
+          while (k !== startKey) {
+            path.unshift(keyToRC(k));
+            k = parent.get(k);
+          }
+          return path;
+        }
+        queue.push(nk);
+      }
+    }
+  }
+  return null; // no path
+}
+
+function dirFromTo(fromR, fromC, toR, toC) {
+  if (toR < fromR) return 'up';
+  if (toR > fromR) return 'down';
+  if (toC < fromC) return 'left';
+  return 'right';
+}
+
+// Compute P(pit) for an unvisited cell using constraint-based estimation
+function estimatePitProb(targetKey) {
+  const ak = aiKB;
+  if (ak.nopit.has(targetKey)) return 0;
+  if (ak.visited.has(targetKey)) return 0;
+
+  const [tr, tc] = keyToRC(targetKey);
+  // Count how many visited breezy neighbors point to this cell
+  // vs how many alternative cells each breezy neighbor has
+  let evidence = 0;
+  let totalNeighborOptions = 0;
+  const adj = neighbors(tr, tc);
+
+  for (const vk of ak.visited) {
+    const [vr, vc] = keyToRC(vk);
+    const vAdj = neighbors(vr, vc);
+    const isAdj = vAdj.some(([nr, nc]) => nr === tr && nc === tc);
+    if (!isAdj) continue;
+
+    const p = perceivedWorld[vr][vc];
+    if (!p.breeze) return 0; // visited neighbor has no breeze -> definitely no pit
+
+    // This visited cell has breeze and is adjacent to target
+    // Count how many unvisited non-nopit neighbors it has (possible pit sources)
+    const unknownAdj = vAdj.filter(([nr, nc]) => {
+      const nk = cellKey(nr, nc);
+      return !ak.nopit.has(nk) && !ak.visited.has(nk);
+    });
+    evidence++;
+    totalNeighborOptions += unknownAdj.length;
+  }
+
+  if (evidence === 0) return cfg.pitProb; // prior
+  // Rough estimate: each breeze must be explained by at least one pit
+  // More breezy neighbors pointing here = higher probability
+  return Math.min(0.95, cfg.pitProb + evidence * 0.15);
+}
+
+function estimateWumpusProb(targetKey) {
+  const ak = aiKB;
+  if (ak.nowumpus.has(targetKey) || !ak.wumpusAlive) return 0;
+  if (ak.visited.has(targetKey)) return 0;
+  if (ak.wumpusLocs.has(targetKey)) return 1.0;
+
+  if (ak.possibleWumpus.size > 0) {
+    if (ak.possibleWumpus.has(targetKey)) return 1.0 / ak.possibleWumpus.size;
+    return 0;
+  }
+
+  // Uniform prior over unknown cells
+  const unknownCount = [...ak.frontier].filter(k => !ak.nowumpus.has(k)).length;
+  if (unknownCount === 0) return 0;
+  return 1.0 / unknownCount;
+}
+
 
 /* ── OFFLINE PWA ──────────────────────────────────────── */
 if ('serviceWorker' in navigator) {
