@@ -1521,6 +1521,294 @@ function estimateWumpusProb(targetKey) {
   return 1.0 / unknownCount;
 }
 
+function aiDecideAction() {
+  const ak = aiKB;
+  const {r, c} = agent;
+  const curKey = cellKey(r, c);
+  const agentType = document.getElementById('ai-agent-type').value;
+
+  // 1. If we see glitter, grab it
+  if (perceivedWorld[r][c].glitter && !hasGold) {
+    return { action: 'grab', reason: 'Glitter detected! Grabbing gold.', logic: 'G(r,c) → Grab' };
+  }
+
+  // 2. If we have gold, go home
+  if (hasGold) {
+    const startR = N - 1, startC = 0;
+    if (r === startR && c === 0) {
+      return { action: 'climb', reason: 'At [1,1] with gold. Climbing out!', logic: 'HasGold ∧ At(1,1) → Climb' };
+    }
+    const homePath = aiBFSPath(r, c, startR, startC, ak.safe);
+    if (homePath && homePath.length > 0) {
+      const [nr, nc] = homePath[0];
+      const dir = dirFromTo(r, c, nr, nc);
+      return { action: 'move', dir, reason: `Returning to [1,1] via ${toCoord(nr, nc)}`, logic: `HasGold → Navigate home (${homePath.length} steps)` };
+    }
+  }
+
+  // 3. Explore safe unvisited frontier cells
+  const safeFrontier = [...ak.frontier].filter(k => ak.safe.has(k) && !ak.visited.has(k));
+  if (safeFrontier.length > 0) {
+    // Pick closest safe frontier cell
+    let bestPath = null, bestKey = null;
+    for (const fk of safeFrontier) {
+      const [fr, fc] = keyToRC(fk);
+      const path = aiBFSPath(r, c, fr, fc, ak.safe);
+      if (path && (!bestPath || path.length < bestPath.length)) {
+        bestPath = path;
+        bestKey = fk;
+      }
+    }
+    if (bestPath && bestPath.length > 0) {
+      const [nr, nc] = bestPath[0];
+      const dir = dirFromTo(r, c, nr, nc);
+      const [fr, fc] = keyToRC(bestKey);
+      return {
+        action: 'move', dir,
+        reason: `Exploring safe cell ${toCoord(fr, fc)}`,
+        logic: `KB ⊨ ¬P(${toCoord(fr,fc)}) ∧ ¬W(${toCoord(fr,fc)}) → Safe to visit`
+      };
+    }
+  }
+
+  // 4. If wumpus location is known and we have arrow, shoot it
+  if (ak.wumpusAlive && ak.hasArrow && ak.wumpusLocs.size > 0) {
+    const wKey = [...ak.wumpusLocs][0];
+    const [wr, wc] = keyToRC(wKey);
+
+    // Can we shoot from current position?
+    // Need to be in same row or column, facing the right direction
+    let shootDir = null;
+    if (wr === r && wc > c) shootDir = 'right';
+    else if (wr === r && wc < c) shootDir = 'left';
+    else if (wc === c && wr < r) shootDir = 'up';
+    else if (wc === c && wr > r) shootDir = 'down';
+
+    if (shootDir) {
+      // Check no other wumpus blocks the shot (edge case for multi-wumpus)
+      if (facing !== shootDir) {
+        return { action: 'turn', dir: getTurnDir(facing, shootDir), reason: `Turning to face ${shootDir} to shoot Wumpus at ${toCoord(wr, wc)}`, logic: `W(${toCoord(wr,wc)}) deduced → Aim arrow` };
+      }
+      return { action: 'shoot', reason: `Shooting at Wumpus at ${toCoord(wr, wc)}!`, logic: `KB ⊨ W(${toCoord(wr,wc)}) → Shoot(${facing})` };
+    }
+
+    // Navigate to a position where we can shoot
+    const shootPositions = [];
+    // Same row positions
+    for (let sc = 0; sc < N; sc++) {
+      if (sc !== wc && ak.safe.has(cellKey(wr, sc))) shootPositions.push([wr, sc]);
+    }
+    // Same col positions
+    for (let sr = 0; sr < N; sr++) {
+      if (sr !== wr && ak.safe.has(cellKey(sr, wc))) shootPositions.push([sr, wc]);
+    }
+    let bestShootPath = null, bestShootPos = null;
+    for (const [sr, sc] of shootPositions) {
+      const path = aiBFSPath(r, c, sr, sc, ak.safe);
+      if (path && (!bestShootPath || path.length < bestShootPath.length)) {
+        bestShootPath = path;
+        bestShootPos = [sr, sc];
+      }
+    }
+    if (bestShootPath && bestShootPath.length > 0) {
+      const [nr, nc] = bestShootPath[0];
+      const dir = dirFromTo(r, c, nr, nc);
+      return { action: 'move', dir, reason: `Moving to firing position for Wumpus at ${toCoord(wr, wc)}`, logic: `Navigate to line of sight` };
+    }
+  }
+
+  // 5. Probabilistic reasoning (Ch. 13) — only if agent type is 'prob'
+  if (agentType === 'prob') {
+    const frontierCells = [...ak.frontier].filter(k => !ak.visited.has(k));
+    if (frontierCells.length > 0) {
+      let bestCell = null, bestRisk = 1.0, bestPath = null;
+      const risks = [];
+      for (const fk of frontierCells) {
+        const pPit = estimatePitProb(fk);
+        const pWumpus = estimateWumpusProb(fk);
+        const pDanger = 1 - (1 - pPit) * (1 - pWumpus);
+        const [fr, fc] = keyToRC(fk);
+        risks.push({ key: fk, r: fr, c: fc, pPit, pWumpus, pDanger });
+
+        if (pDanger < bestRisk) {
+          const path = aiBFSPath(r, c, fr, fc, new Set([...ak.safe, fk]));
+          if (path) {
+            bestRisk = pDanger;
+            bestCell = fk;
+            bestPath = path;
+          }
+        }
+      }
+
+      if (bestCell && bestPath && bestPath.length > 0 && bestRisk < 0.75) {
+        const [fr, fc] = keyToRC(bestCell);
+        const [nr, nc] = bestPath[0];
+        const dir = dirFromTo(r, c, nr, nc);
+        const riskPct = (bestRisk * 100).toFixed(0);
+        return {
+          action: 'move', dir,
+          reason: `Risk-taking: ${toCoord(fr, fc)} (P(danger)=${riskPct}%)`,
+          logic: `P(pit)=${estimatePitProb(bestCell).toFixed(2)}, P(wumpus)=${estimateWumpusProb(bestCell).toFixed(2)} → Acceptable risk`,
+          probData: risks
+        };
+      }
+    }
+  }
+
+  // 6. No safe moves, no good probabilistic move — retreat to [1,1]
+  const startR = N - 1, startC = 0;
+  if (r === startR && c === 0) {
+    return { action: 'climb', reason: 'No safe options. Climbing out to survive.', logic: '∀f ∈ Frontier: KB ⊭ Safe(f) → Retreat' };
+  }
+  const retreatPath = aiBFSPath(r, c, startR, startC, ak.safe);
+  if (retreatPath && retreatPath.length > 0) {
+    const [nr, nc] = retreatPath[0];
+    const dir = dirFromTo(r, c, nr, nc);
+    return { action: 'move', dir, reason: 'Retreating to [1,1] — no safe exploration left', logic: 'No provably safe frontier → Retreat' };
+  }
+
+  // Absolute fallback
+  return { action: 'climb', reason: 'Stuck. Attempting climb.', logic: 'Fallback' };
+}
+
+function getTurnDir(current, target) {
+  const idx = TURN_ORDER.indexOf(current);
+  const tIdx = TURN_ORDER.indexOf(target);
+  const cw = (tIdx - idx + 4) % 4;
+  return cw <= 2 ? 'right' : 'left';
+}
+
+function aiExecuteAction(decision) {
+  switch (decision.action) {
+    case 'grab': grab(); break;
+    case 'shoot': shoot(); aiKB.hasArrow = false; aiKB.wumpusAlive = wumpusAlive > 0; break;
+    case 'climb': climb(); break;
+    case 'turn': turn(decision.dir); break;
+    case 'move':
+      move(decision.dir);
+      if (!gameOver) aiObserve();
+      break;
+  }
+  if (hasGold) aiKB.hasGold = true;
+}
+
+function logAI(msg, cls = '') {
+  const el = document.getElementById('ai-reasoning');
+  const stepHtml = `<div class="step"><span class="step-num">#${++aiStepNum}</span> <span class="step-${cls}">${msg}</span></div>`;
+  el.innerHTML += stepHtml;
+  el.scrollTop = el.scrollHeight;
+}
+
+function aiStep() {
+  if (gameOver) {
+    aiRecordGame();
+    return;
+  }
+  const decision = aiDecideAction();
+  logAI(`${decision.reason}`, 'action');
+  logAI(`  ${decision.logic}`, 'logic');
+
+  // Show probability data if available
+  if (decision.probData) {
+    const top3 = decision.probData.sort((a, b) => a.pDanger - b.pDanger).slice(0, 3);
+    for (const r of top3) {
+      const cls = r.pDanger < 0.3 ? 'safe' : r.pDanger < 0.6 ? 'prob' : 'danger';
+      logAI(`  ${toCoord(r.r, r.c)}: P(pit)=${r.pPit.toFixed(2)} P(wumpus)=${r.pWumpus.toFixed(2)} → risk=${(r.pDanger*100).toFixed(0)}%`, cls);
+    }
+  }
+
+  aiExecuteAction(decision);
+
+  if (gameOver) {
+    aiRecordGame();
+  }
+}
+
+let aiGameRecorded = false;
+function aiRecordGame() {
+  if (aiGameRecorded) return;
+  aiGameRecorded = true;
+  aiTotalGames++;
+  if (hasGold && score > 0) aiTotalWins++;
+  aiScoreSum += score;
+
+  const won = hasGold && score > 0;
+  logAI(`Game over! ${won ? 'WON' : 'LOST'} — Score: ${score}`, won ? 'safe' : 'danger');
+
+  document.getElementById('ai-games').textContent = aiTotalGames;
+  document.getElementById('ai-wins').textContent = aiTotalWins;
+  document.getElementById('ai-winrate').textContent = ((aiTotalWins / aiTotalGames) * 100).toFixed(1) + '%';
+  document.getElementById('ai-avg-score').textContent = (aiScoreSum / aiTotalGames).toFixed(0);
+
+  // Dismiss game-over overlay so AI can continue
+  document.getElementById('overlay').classList.remove('show');
+}
+
+function aiStartNewGame() {
+  newGame();
+  aiGameRecorded = false;
+  aiKB = initAIKB();
+  aiObserve();
+  logAI('--- New game started ---', 'logic');
+}
+
+let aiRunning = false;
+function aiAutoPlay() {
+  document.getElementById('ai-play').style.display = 'none';
+  document.getElementById('ai-pause').style.display = '';
+  if (!aiKB) { aiReset(); }
+  aiRunning = true;
+  aiAutoTick();
+}
+
+function aiAutoTick() {
+  if (!aiRunning) return;
+  if (gameOver) {
+    aiRecordGame();
+    setTimeout(() => { if (aiRunning) { aiStartNewGame(); aiAutoTick(); } }, aiSpeed);
+    return;
+  }
+  aiStep();
+  setTimeout(() => { if (aiRunning) aiAutoTick(); }, aiSpeed);
+}
+
+function aiPause() {
+  aiRunning = false;
+  aiAutoInterval = null; // compat
+  document.getElementById('ai-play').style.display = '';
+  document.getElementById('ai-pause').style.display = 'none';
+}
+
+// Override render to show probability overlay when AI mode is on
+const _origRender = render;
+render = function() {
+  _origRender();
+  if (aiMode && aiKB) renderAIProbOverlay();
+};
+
+function renderAIProbOverlay() {
+  const grid = document.getElementById('grid');
+  const cells = grid.querySelectorAll('.cell');
+  const agentType = document.getElementById('ai-agent-type').value;
+
+  for (let i = 0; i < cells.length; i++) {
+    const r = Math.floor(i / N), c = i % N;
+    const key = cellKey(r, c);
+    if (aiKB.visited.has(key) || visited[r][c]) continue;
+    if (agentType !== 'prob') continue;
+
+    const pPit = estimatePitProb(key);
+    const pWump = estimateWumpusProb(key);
+
+    if (pPit > 0 || pWump > 0) {
+      let html = '<span class="prob-overlay">';
+      if (pPit > 0) html += `<span class="prob-pit">P=${(pPit*100).toFixed(0)}%</span><br>`;
+      if (pWump > 0) html += `<span class="prob-wumpus">W=${(pWump*100).toFixed(0)}%</span>`;
+      html += '</span>';
+      cells[i].innerHTML += html;
+    }
+  }
+}
 
 /* ── OFFLINE PWA ──────────────────────────────────────── */
 if ('serviceWorker' in navigator) {
