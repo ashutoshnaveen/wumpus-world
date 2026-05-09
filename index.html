@@ -376,6 +376,7 @@
       <option value="prob" selected>KB + Probabilistic (Ch.13)</option>
     </select>
     <span class="ai-label">Agent</span>
+    <button id="ai-autostart" onclick="toggleAutoRestart()" class="active">🔁 Auto Restart: On</button>
   </div>
   <div class="ai-stats" id="ai-stats">
     <span>Games: <span class="stat-val" id="ai-games">0</span></span>
@@ -1753,6 +1754,15 @@ function aiStartNewGame() {
 }
 
 let aiRunning = false;
+let aiAutoRestart = true;
+
+function toggleAutoRestart() {
+  aiAutoRestart = !aiAutoRestart;
+  const btn = document.getElementById('ai-autostart');
+  btn.textContent = aiAutoRestart ? '🔁 Auto Restart: On' : '🔁 Auto Restart: Off';
+  btn.classList.toggle('active', aiAutoRestart);
+}
+
 function aiAutoPlay() {
   document.getElementById('ai-play').style.display = 'none';
   document.getElementById('ai-pause').style.display = '';
@@ -1765,7 +1775,12 @@ function aiAutoTick() {
   if (!aiRunning) return;
   if (gameOver) {
     aiRecordGame();
-    setTimeout(() => { if (aiRunning) { aiStartNewGame(); aiAutoTick(); } }, aiSpeed);
+    if (aiAutoRestart) {
+      setTimeout(() => { if (aiRunning) { aiStartNewGame(); aiAutoTick(); } }, aiSpeed);
+    } else {
+      logAI('Auto-restart is off. Press Auto to continue or New to restart.', 'logic');
+      aiPause();
+    }
     return;
   }
   aiStep();
