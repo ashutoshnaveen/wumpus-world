@@ -1,5 +1,9 @@
 .DS_Store
-*.png
 *.jpg
 node_modules/
 .playwright-mcp/
+# Allow specific PNGs
+*.png
+!icon-192.png
+!icon-512.png
+!screenshots/*.png
