@@ -23,18 +23,82 @@ Follows the textbook rules closely:
 - Scoring: +1000 for escaping with gold, -1000 for death, -1 per action, -10 per arrow
 - Gold is always placed on a cell reachable from the start (BFS check, pits block movement)
 
-There's also a knowledge base overlay that shows inferred safe/unsafe cells, a hint system that nudges you toward the right logical deductions, and a collapsible study guide with chapter references.
+## Knowledge Base Overlay
+
+Toggle "▶ Knowledge Base" to reveal a live inference panel below the grid. For every unvisited cell it shows what has been deduced so far:
+
+- **✅ Safe** — `KB ⊨ ¬Pit(cell) ∧ ¬Wumpus(cell)` derived from adjacent visited cells with no breeze/stench.
+- **❓pit? / ❓wumpus?** — danger status still unknown.
+- **🚫pit / 🚫wumpus** — ruled out by inference but the other hazard is still unresolved.
+
+In Noisy Sensors mode the overlay adds a warning that percepts may be unreliable.
+
+## Hint System
+
+Click "💡 Hints: Off" to turn on context-sensitive hints. Hints update after every move and are based on the current percepts and KB state:
+
+- **Glitter detected** — reminds you to grab the gold.
+- **Breeze/Stench analysis** — if only one adjacent cell is uncleared, the hint identifies it as the likely hazard with the propositional logic rule (e.g. `KB ⊨ Breeze ∧ all-other-adj-safe → Pit`). If multiple candidates exist it says so.
+- **Safe frontier** — lists known-safe unvisited cells to explore next.
+- **Gold in hand** — directs you back to [1,1] to climb out.
+- **At exit with gold** — tells you to press Climb.
+
+Click "Next Hint →" to cycle through all available hints for the current position.
+
+## Study Guide
+
+A collapsible reference panel ("📚 Study Guide") that maps each game mechanic to the relevant textbook section:
+
+- Ch. 7 — Propositional logic, knowledge base, entailment, inference rules (Modus Ponens, resolution).
+- Ch. 13 — Uncertainty, probability, Bayesian reasoning, sensor noise, stochastic actions.
+- Formulas for calculating pit/wumpus probability from adjacent observations.
+- Definitions of key concepts: model checking, soundness, completeness, satisfiability.
 
 ## AI Agent
 
-Click "Watch AI Play" to hand control to an automated agent. Two modes:
+Click "🤖 Watch AI Play" to hand control to an automated agent. Two agent types:
 
-- **KB Agent (Ch. 7)** — pure propositional logic. Tracks which cells are provably safe (`KB ⊨ ¬Pit ∧ ¬Wumpus`), deduces Wumpus location by elimination, navigates to shoot when it has line of sight. Retreats to [1,1] when no safe frontier remains.
-- **KB + Probabilistic (Ch. 13)** — same KB core, but when the safe frontier is exhausted it estimates `P(pit)` and `P(wumpus)` for each unknown cell using constraint propagation from adjacent breeze/stench observations. Takes the lowest-risk move if danger is below threshold, otherwise retreats.
+### KB Agent (Ch. 7)
 
-Controls: step-through, auto-play (slow/normal/fast/turbo), pause, reset. The reasoning panel shows every decision with the propositional logic or probability estimate behind it. Probability overlays appear on unexplored cells when the probabilistic agent is selected.
+Pure propositional logic agent:
 
-Stats dashboard tracks games played, wins, win rate, and average score across runs. Over 100 Classic-mode games the KB+Prob agent wins about 50% with a positive average score.
+1. Observes percepts at the current cell and updates its knowledge base.
+2. Marks adjacent cells as safe if no breeze and no stench: `¬Breeze(x,y) → ¬Pit(adj)`.
+3. Picks the nearest unvisited safe cell (BFS) and navigates there.
+4. Deduces Wumpus location by elimination — if stench is detected and all but one adjacent cell are cleared, it infers `Wumpus(cell)`, faces it, and shoots.
+5. When no safe frontier remains, retreats to [1,1] and climbs out.
+
+### KB + Probabilistic Agent (Ch. 13)
+
+Extends the KB agent with risk assessment:
+
+1. Runs the same KB inference as above.
+2. When the safe frontier is exhausted, estimates `P(pit)` and `P(wumpus)` for each unknown cell using constraint counts from adjacent breeze/stench observations.
+3. If the lowest-danger cell is below a risk threshold, it moves there (calculated risk).
+4. Probability overlays appear on unexplored cells showing `P=X%` and `W=X%`.
+5. Falls back to retreat if no move is acceptably safe.
+
+### AI Controls
+
+| Control | Description |
+|---------|-------------|
+| ⏭ Step | Execute one AI decision |
+| ▶ Auto | Continuous play at selected speed |
+| ⏸ Pause | Stop auto-play |
+| 🔄 Reset | Start a new game with fresh KB |
+| Speed | Slow (800ms) / Normal (400ms) / Fast (150ms) / Turbo (50ms) |
+| Agent | Switch between KB and KB+Probabilistic |
+| 🔁 Auto Restart | On: starts a new game automatically after game over. Off: pauses after each game so you can inspect the result. |
+
+### Stats Dashboard
+
+Tracks across auto-play runs:
+- **Games** — total games played
+- **Wins** — games where the agent escaped with gold (score > 0)
+- **Win%** — win rate percentage
+- **Avg Score** — mean score across all games
+
+Typical results over 200 Classic-mode games: KB agent ~34% win rate, KB+Probabilistic agent ~63% win rate.
 
 ## How to Play
 
