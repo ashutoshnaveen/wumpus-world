@@ -151,7 +151,17 @@ The report card shows:
 
 **Online:** [ashutoshnaveen.github.io/wumpus-world](https://ashutoshnaveen.github.io/wumpus-world/)
 
-**Offline:** Download the page (File → Save As, or right-click → Save As HTML) and open `index.html` in any browser. Everything is self-contained in a single file — no internet required.
+**Offline — works on every platform:**
+
+| Platform | How to save for offline |
+|----------|------------------------|
+| **iPhone / iPad** | Open the link in Safari → tap Share ⬆ → "Add to Home Screen" → tap Add. It installs as a standalone app and works without internet. |
+| **Android** | Open in Chrome → tap the "Add to Home Screen" banner that appears (or Menu → Add to Home Screen). |
+| **Desktop** | File → Save As → save the HTML file. Or click the install icon in the address bar (Chrome/Edge). |
+
+The page auto-detects your platform and shows a one-time install guide banner with instructions.
+
+A **service worker** caches the entire app on first visit — after that, it loads even in airplane mode.
 
 ```bash
 # or serve it locally
@@ -196,17 +206,28 @@ $ node simulate.js
 ✅ ALL TESTS PASSED — Game 100% aligns with Russell & Norvig Section 7.2
 ```
 
+## For Professors & TAs
+
+Share this link with your class: **https://ashutoshnaveen.github.io/wumpus-world/**
+
+- Students can play in-browser or save it offline (instructions appear automatically per platform)
+- The gameplay analysis report card grades every move against a shadow AI agent — helps students self-assess their logical reasoning
+- The study guide maps game mechanics to textbook sections (Ch. 7 and Ch. 13)
+- No accounts, no installs, no server — one link, works everywhere
+- Works offline after first visit via service worker (PWA)
+
 ## Features at a Glance
 
 - 5 game modes (Classic → Nightmare)
 - Full KB inference with live overlay
 - Two AI agents (KB and Probabilistic) with auto-play
 - Context-sensitive hint system
-- Post-game gameplay analysis with grade & suggestions
+- Post-game gameplay analysis with grade & study suggestions
 - Textbook study guide with formulas
-- PWA / offline support
+- PWA with service worker — true offline support on iOS, Android, desktop
+- Platform-aware install banners (iOS Share instructions, Android install button, desktop Save As)
 - Mobile responsive with touch & swipe
-- Single HTML file, zero dependencies
+- Single HTML file, zero external dependencies
 
 ## References
 
