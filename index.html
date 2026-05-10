@@ -292,7 +292,7 @@
     display: none; position: fixed; inset: 0;
     background: rgba(0,0,0,0.88);
     flex-direction: column; align-items: center; justify-content: center;
-    z-index: 10; padding: 20px; text-align: center;
+    z-index: 10; padding: 20px; text-align: center; overflow-y: auto;
   }
   .overlay.show { display: flex; }
   .overlay h2 { font-size: 1.8rem; margin-bottom: 6px; }
@@ -302,6 +302,35 @@
     border-radius: 12px; padding: 11px 28px; font-size: 0.95rem;
     cursor: pointer; touch-action: manipulation;
   }
+
+  /* ── Gameplay Analysis Report Card ── */
+  .report-card {
+    background: rgba(255,255,255,0.07); border-radius: 14px;
+    padding: 16px; max-width: 380px; width: 90%; margin: 10px auto;
+    text-align: left; font-size: 0.82rem; line-height: 1.5;
+  }
+  .report-card h3 { text-align: center; margin: 0 0 10px; font-size: 1.1rem; }
+  .report-grade {
+    text-align: center; font-size: 2.2rem; font-weight: 900; margin: 4px 0 8px;
+  }
+  .report-grade.grade-A { color: #4caf50; }
+  .report-grade.grade-B { color: #8bc34a; }
+  .report-grade.grade-C { color: #ffc107; }
+  .report-grade.grade-D { color: #ff9800; }
+  .report-grade.grade-F { color: #f44336; }
+  .report-stats { display: flex; justify-content: space-around; margin: 8px 0; gap: 6px; }
+  .report-stat { text-align: center; }
+  .report-stat .val { font-size: 1.3rem; font-weight: 700; }
+  .report-stat .lbl { font-size: 0.65rem; opacity: 0.6; }
+  .report-moves { max-height: 140px; overflow-y: auto; margin-top: 8px; font-size: 0.72rem; font-family: 'Courier New', monospace; }
+  .report-moves .mv { padding: 2px 4px; border-radius: 4px; margin: 1px 0; }
+  .mv-optimal { background: rgba(76,175,80,0.15); }
+  .mv-ok { background: rgba(255,193,7,0.1); }
+  .mv-risky { background: rgba(255,152,0,0.18); }
+  .mv-mistake { background: rgba(244,67,54,0.18); }
+  .mv-blunder { background: rgba(244,67,54,0.3); }
+  .report-tip { margin-top: 8px; padding: 8px; background: rgba(33,150,243,0.1); border-radius: 8px; font-size: 0.75rem; }
+  .report-tip b { color: #64b5f6; }
 </style>
 </head>
 <body>
@@ -649,6 +678,7 @@
 <div class="overlay" id="overlay">
   <h2 id="overlay-title"></h2>
   <p class="result" id="overlay-result"></p>
+  <div id="report-card-container"></div>
   <button onclick="newGame(); document.getElementById('overlay').classList.remove('show')">Play Again</button>
 </div>
 
@@ -801,6 +831,9 @@ function newGame() {
   perceiveCell(startR, startC);
   updateKB();
 
+  initShadowKB();
+  shadowObserve(startR, startC);
+  document.getElementById('report-card-container').innerHTML = '';
   setMsg('You enter the cave at [1,1]. Good luck!');
   render();
 }
@@ -854,6 +887,7 @@ function turn(dir) {
   if (dir === 'right') facing = TURN_ORDER[(idx + 1) % 4];
   else facing = TURN_ORDER[(idx + 3) % 4];
   score -= 1; moveCount++;
+  logPlayerMove('turn', dir, agent.r, agent.c);
   setMsg(`Turned ${dir}. Now facing ${facing}. ${FACING_ARROWS[facing]}`);
   render();
 }
@@ -895,6 +929,7 @@ function move(dir) {
     score -= 1; moveCount++; updateUI(); return;
   }
 
+  const moveFromR = agent.r, moveFromC = agent.c;
   agent = {r: finalR, c: finalC};
   score -= 1; moveCount++;
   visited[finalR][finalC] = true;
@@ -904,12 +939,14 @@ function move(dir) {
 
   // Check death
   if (world[finalR][finalC].pit) {
+    logPlayerMove('move', dir, moveFromR, moveFromC, finalR, finalC);
     endGame(false, slipped
       ? `You slipped into a pit at ${toCoord(finalR,finalC)}! 💀`
       : 'You fell into a pit! 💀');
     return;
   }
   if (world[finalR][finalC].wumpus && wumpusAlive > 0) {
+    logPlayerMove('move', dir, moveFromR, moveFromC, finalR, finalC);
     endGame(false, slipped
       ? `You slipped into the Wumpus at ${toCoord(finalR,finalC)}! 💀`
       : 'The Wumpus got you! 💀');
@@ -936,6 +973,7 @@ function move(dir) {
   const noisyNote = cfg.noisySensors ? ' (sensors may lie!)' : '';
   setMsg(msg + noisyNote, msgCls);
 
+  logPlayerMove('move', dir, moveFromR, moveFromC, finalR, finalC);
   updateKB();
   render();
 }
@@ -953,6 +991,7 @@ function grab() {
   } else {
     setMsg('Nothing to grab here.');
   }
+  logPlayerMove('grab', null, agent.r, agent.c);
   score -= 1; render();
 }
 
@@ -979,6 +1018,7 @@ function shoot() {
     ar += dr; ac += dc; // keep flying
   }
 
+  logPlayerMove('shoot', facing, agent.r, agent.c);
   if (hit) {
     const extra = wumpusAlive > 0 ? ` (${wumpusAlive} Wumpus remaining)` : '';
     setMsg(`🎯 SCREAM! Arrow hit facing ${facing}! Wumpus is dead!${extra}`, 'win');
@@ -998,6 +1038,7 @@ function climb() {
     setMsg('You can only climb out at [1,1]!', 'warn');
     score -= 1; render(); return;
   }
+  logPlayerMove('climb', null, agent.r, agent.c);
   if (hasGold) {
     score += 1000;
     endGame(true, `You escaped with the gold! 🏆`);
@@ -1017,6 +1058,7 @@ function endGame(won, msg) {
   document.getElementById('overlay-title').textContent = won ? '🎉 Escaped!' : '💀 Game Over';
   document.getElementById('overlay-result').textContent =
     `${msg}\nMode: ${cfg.name} · Moves: ${moveCount} · Final score: ${score}`;
+  generateReportCard();
   ov.classList.add('show');
 }
 
@@ -1184,6 +1226,212 @@ document.getElementById('guide-toggle').addEventListener('click', () => {
 });
 
 window.addEventListener('resize', () => { if (world) render(); });
+
+/* ── GAMEPLAY ANALYSIS ENGINE ────────────────────────────── */
+let moveLog = [];         // [{step, action, dir, from, to, classification, aiAdvice, concept}]
+let shadowKB = null;      // shadow copy of AI KB running alongside player
+
+function initShadowKB() {
+  const startR = N - 1, startC = 0;
+  shadowKB = {
+    safe: new Set([`${startR},${startC}`]),
+    visited: new Set([`${startR},${startC}`]),
+    nopit: new Set([`${startR},${startC}`]),
+    nowumpus: new Set([`${startR},${startC}`]),
+    maypit: new Set(),
+    maywumpus: new Set(),
+    frontier: new Set(),
+    wumpusAlive: wumpusAlive > 0,
+    wumpusLocs: new Set(),
+    possibleWumpus: new Set(),
+    hasArrow: true,
+    hasGold: false,
+    goldLoc: null,
+    path: [],
+    returnPath: null,
+  };
+  moveLog = [];
+}
+
+function shadowObserve(r, c) {
+  if (!shadowKB) return;
+  const sk = shadowKB;
+  const key = `${r},${c}`;
+  sk.visited.add(key); sk.safe.add(key); sk.nopit.add(key); sk.nowumpus.add(key);
+  sk.maypit.delete(key); sk.maywumpus.delete(key); sk.frontier.delete(key);
+  const p = perceivedWorld[r][c];
+  const adj = neighbors(r, c);
+  for (const [nr, nc] of adj) {
+    const nk = `${nr},${nc}`;
+    if (!sk.visited.has(nk)) sk.frontier.add(nk);
+  }
+  if (!p.breeze) {
+    for (const [nr, nc] of adj) { sk.nopit.add(`${nr},${nc}`); sk.maypit.delete(`${nr},${nc}`); }
+  } else {
+    for (const [nr, nc] of adj) { const nk = `${nr},${nc}`; if (!sk.nopit.has(nk) && !sk.visited.has(nk)) sk.maypit.add(nk); }
+  }
+  if (!p.stench) {
+    for (const [nr, nc] of adj) { sk.nowumpus.add(`${nr},${nc}`); sk.maywumpus.delete(`${nr},${nc}`); sk.possibleWumpus.delete(`${nr},${nc}`); }
+  } else {
+    for (const [nr, nc] of adj) { const nk = `${nr},${nc}`; if (!sk.nowumpus.has(nk) && !sk.visited.has(nk)) { sk.maywumpus.add(nk); sk.possibleWumpus.add(nk); } }
+  }
+  // Update safe inference
+  for (const [nr, nc] of adj) {
+    const nk = `${nr},${nc}`;
+    if (sk.nopit.has(nk) && sk.nowumpus.has(nk)) sk.safe.add(nk);
+  }
+  // Wumpus elimination
+  if (p.stench) {
+    const unknown = adj.filter(([nr, nc]) => !sk.nowumpus.has(`${nr},${nc}`) && !sk.visited.has(`${nr},${nc}`));
+    if (unknown.length === 1) sk.wumpusLocs.add(`${unknown[0][0]},${unknown[0][1]}`);
+  }
+  if (p.glitter) sk.goldLoc = [r, c];
+}
+
+function getShadowAdvice() {
+  if (!shadowKB) return null;
+  const sk = shadowKB;
+  const {r, c} = agent;
+  const p = perceivedWorld[r][c];
+
+  // 1. Glitter → grab
+  if (p.glitter && !hasGold) return { action: 'grab', reason: 'Gold is here — grab it!', concept: 'Section 7.2 — Percept: Glitter' };
+  // 2. Has gold → go home
+  if (hasGold) {
+    if (r === N - 1 && c === 0) return { action: 'climb', reason: 'At exit with gold — climb out!', concept: 'Section 7.2 — Optimal strategy' };
+    return { action: 'move_home', reason: 'Navigate back to [1,1] with gold', concept: 'Section 7.2 — Goal: escape' };
+  }
+  // 3. Safe frontier exists → explore it
+  const safeFrontier = [...sk.frontier].filter(k => sk.safe.has(k) && !sk.visited.has(k));
+  if (safeFrontier.length > 0) return { action: 'move_safe', cells: safeFrontier, reason: `Explore safe cells: ${safeFrontier.slice(0,3).map(k => { const [rr,cc] = k.split(',').map(Number); return toCoord(rr,cc); }).join(', ')}`, concept: 'Section 7.4 — KB ⊨ Safe(cell)' };
+  // 4. Wumpus known + arrow → shoot
+  if (sk.wumpusAlive && sk.hasArrow && sk.wumpusLocs.size > 0) return { action: 'shoot_wumpus', reason: 'Wumpus location deduced — shoot it!', concept: 'Section 7.4 — Definite inference' };
+  // 5. No safe moves → retreat
+  return { action: 'retreat', reason: 'No safe frontier — retreat to [1,1]', concept: 'Section 7.3 — Incomplete knowledge' };
+}
+
+function classifyMove(playerAction, playerDir, fromR, fromC, toR, toC) {
+  const advice = getShadowAdvice();
+  if (!advice) return { cls: 'ok', label: 'OK', advice: null, concept: '' };
+  const sk = shadowKB;
+  const destKey = toR !== undefined ? `${toR},${toC}` : null;
+
+  // BLUNDER: moved into a cell known to be dangerous
+  if (playerAction === 'move' && destKey) {
+    if (sk.maypit.has(destKey) && !sk.safe.has(destKey) && !sk.nopit.has(destKey)) {
+      return { cls: 'mistake', label: 'Risky', advice: advice.reason, concept: 'Section 7.3 — Moved into cell with possible pit (not proven safe)' };
+    }
+    if (sk.maywumpus.has(destKey) && !sk.safe.has(destKey) && !sk.nowumpus.has(destKey)) {
+      return { cls: 'mistake', label: 'Risky', advice: advice.reason, concept: 'Section 7.3 — Moved into cell with possible Wumpus' };
+    }
+  }
+
+  // BLUNDER: missed grabbing gold
+  if (playerAction !== 'grab' && perceivedWorld[fromR][fromC].glitter && !hasGold) {
+    return { cls: 'blunder', label: 'Blunder', advice: 'You should grab the gold!', concept: 'Section 7.2 — Always grab when glitter' };
+  }
+
+  // BLUNDER: climbed without gold when safe frontier exists
+  if (playerAction === 'climb' && !hasGold) {
+    const sf = [...sk.frontier].filter(k => sk.safe.has(k) && !sk.visited.has(k));
+    if (sf.length > 0) return { cls: 'blunder', label: 'Blunder', advice: 'Safe cells left to explore! Don\'t give up yet.', concept: 'Section 7.2 — Premature exit' };
+  }
+
+  // MISTAKE: walked into unvisited cell when a safe known cell was available
+  if (playerAction === 'move' && destKey && !sk.safe.has(destKey) && !sk.visited.has(destKey)) {
+    const safeFrontier = [...sk.frontier].filter(k => sk.safe.has(k) && !sk.visited.has(k));
+    if (safeFrontier.length > 0) {
+      return { cls: 'mistake', label: 'Mistake', advice: `Safe alternatives: ${safeFrontier.slice(0,2).map(k => { const [rr,cc]=k.split(',').map(Number); return toCoord(rr,cc); }).join(', ')}`, concept: 'Section 7.4 — Chose unknown cell when safe options existed' };
+    }
+  }
+
+  // OK: moved to a safe cell but not optimal direction
+  if (playerAction === 'move' && destKey && sk.safe.has(destKey)) {
+    return { cls: 'optimal', label: 'Good', advice: null, concept: '' };
+  }
+
+  // Correct actions
+  if (playerAction === 'grab' && perceivedWorld[fromR][fromC].glitter) return { cls: 'optimal', label: 'Perfect', advice: null, concept: '' };
+  if (playerAction === 'climb' && hasGold && fromR === N - 1 && fromC === 0) return { cls: 'optimal', label: 'Perfect', advice: null, concept: '' };
+  if (playerAction === 'shoot') return { cls: 'ok', label: 'OK', advice: null, concept: '' };
+  if (playerAction === 'turn') return { cls: 'ok', label: 'OK', advice: null, concept: '' };
+
+  return { cls: 'ok', label: 'OK', advice: null, concept: '' };
+}
+
+function logPlayerMove(action, dir, fromR, fromC, toR, toC) {
+  if (aiMode || !shadowKB) return;
+  const classification = classifyMove(action, dir, fromR, fromC, toR, toC);
+  moveLog.push({
+    step: moveLog.length + 1,
+    action, dir,
+    from: toCoord(fromR, fromC),
+    to: toR !== undefined ? toCoord(toR, toC) : null,
+    ...classification,
+  });
+  // Update shadow KB after player move
+  if (action === 'move' && toR !== undefined && !gameOver) shadowObserve(toR, toC);
+  if (action === 'shoot' && !wumpusAlive) { shadowKB.wumpusAlive = false; shadowKB.hasArrow = false; }
+  if (action === 'grab' && hasGold) shadowKB.hasGold = true;
+}
+
+function generateReportCard() {
+  if (aiMode || moveLog.length === 0) { document.getElementById('report-card-container').innerHTML = ''; return; }
+  const total = moveLog.length;
+  const optimal = moveLog.filter(m => m.cls === 'optimal').length;
+  const ok = moveLog.filter(m => m.cls === 'ok').length;
+  const mistakes = moveLog.filter(m => m.cls === 'mistake').length;
+  const blunders = moveLog.filter(m => m.cls === 'blunder').length;
+  const risky = moveLog.filter(m => m.cls === 'risky').length;
+
+  const accuracy = total > 0 ? ((optimal + ok) / total * 100) : 0;
+  let grade, gradeClass;
+  if (accuracy >= 90 && blunders === 0) { grade = 'A'; gradeClass = 'grade-A'; }
+  else if (accuracy >= 75 && blunders <= 1) { grade = 'B'; gradeClass = 'grade-B'; }
+  else if (accuracy >= 60) { grade = 'C'; gradeClass = 'grade-C'; }
+  else if (accuracy >= 40) { grade = 'D'; gradeClass = 'grade-D'; }
+  else { grade = 'F'; gradeClass = 'grade-F'; }
+
+  // Bonus: if player won, bump grade
+  if (hasGold && score > 0 && grade !== 'A') {
+    const grades = ['F','D','C','B','A'];
+    const idx = grades.indexOf(grade);
+    if (idx < 4) { grade = grades[idx + 1]; gradeClass = 'grade-' + grade; }
+  }
+
+  // Build move-by-move log (show only non-OK moves + first/last few)
+  let movesHtml = '';
+  for (const m of moveLog) {
+    const icon = m.cls === 'optimal' ? '✅' : m.cls === 'ok' ? '·' : m.cls === 'risky' ? '⚠️' : m.cls === 'mistake' ? '❌' : '💥';
+    const adviceStr = m.advice ? ` → ${m.advice}` : '';
+    movesHtml += `<div class="mv mv-${m.cls}">${icon} #${m.step} ${m.action}${m.dir ? ' ' + m.dir : ''} ${m.from}${m.to ? '→' + m.to : ''} <b>${m.label}</b>${adviceStr}</div>`;
+  }
+
+  // Key concepts missed
+  const conceptsMissed = moveLog.filter(m => m.concept).map(m => m.concept);
+  const uniqueConcepts = [...new Set(conceptsMissed)];
+  let tipsHtml = '';
+  if (uniqueConcepts.length > 0) {
+    tipsHtml = '<div class="report-tip"><b>Study these concepts:</b><br>' +
+      uniqueConcepts.slice(0, 3).map(c => `• ${c}`).join('<br>') + '</div>';
+  } else if (grade === 'A') {
+    tipsHtml = '<div class="report-tip"><b>Excellent!</b> You played like a logical agent. Every move was well-reasoned.</div>';
+  }
+
+  const html = `<div class="report-card">
+    <h3>📊 Gameplay Analysis</h3>
+    <div class="report-grade ${gradeClass}">${grade}</div>
+    <div class="report-stats">
+      <div class="report-stat"><div class="val">${accuracy.toFixed(0)}%</div><div class="lbl">Accuracy</div></div>
+      <div class="report-stat"><div class="val">${optimal}</div><div class="lbl">Optimal</div></div>
+      <div class="report-stat"><div class="val">${mistakes + risky}</div><div class="lbl">Mistakes</div></div>
+      <div class="report-stat"><div class="val">${blunders}</div><div class="lbl">Blunders</div></div>
+    </div>
+    <div class="report-moves">${movesHtml}</div>
+    ${tipsHtml}
+  </div>`;
+  document.getElementById('report-card-container').innerHTML = html;
+}
 
 /* ── HINT SYSTEM ─────────────────────────────────────────── */
 let hintOn = false, hintIdx = 0, hintList = [];
