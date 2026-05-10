@@ -1,8 +1,15 @@
 # Wumpus World
 
+**[▶ Play it live](https://ashutoshnaveen.github.io/wumpus-world/)**
+
 Browser-based Wumpus World game from Russell & Norvig's *AI: A Modern Approach* (Section 7.2). Everything runs from a single HTML file, no build step or dependencies needed. Works offline, works on phones.
 
 Built this to have something playable while studying the logical inference chapters. The five modes cover the main variants discussed in the textbook.
+
+<p align="center">
+  <img src="screenshots/game.png" width="320" alt="Wumpus World gameplay">
+  <img src="screenshots/ai-agent.png" width="320" alt="AI agent with probability overlay">
+</p>
 
 ## Game Modes
 
@@ -90,6 +97,26 @@ Extends the KB agent with risk assessment:
 | Agent | Switch between KB and KB+Probabilistic |
 | 🔁 Auto Restart | On: starts a new game automatically after game over. Off: pauses after each game so you can inspect the result. |
 
+### AI Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│                  Agent Loop                      │
+│                                                  │
+│  Percepts ──► KB Update ──► Inference ──► Action  │
+│  (breeze,      (assert      (safe?        (move,  │
+│   stench,       facts)       wumpus?       shoot, │
+│   glitter)                   prob?)        grab)  │
+│                                                  │
+│  KB Agent:     ¬Breeze(x) → ¬Pit(adj)           │
+│                Stench ∧ 1-unknown → Wumpus(cell) │
+│                                                  │
+│  Prob Agent:   P(pit|evidence) from constraint   │
+│                counts on adjacent observations    │
+│                Risk threshold → move or retreat   │
+└─────────────────────────────────────────────────┘
+```
+
 ### Stats Dashboard
 
 Tracks across auto-play runs:
@@ -121,10 +148,30 @@ python3 -m http.server 8000
 
 ## Tests
 
-`simulate.js` runs ~65k assertions covering world generation, percepts, movement, turning, shooting, grabbing, climbing, scoring, stochastic slip rates, noisy sensor flipping, coordinate mapping, and edge cases. Also ran 1500+ automated playthroughs in Playwright across all modes.
+`simulate.js` runs 17 test suites covering world generation, percepts, movement, turning, shooting, grabbing, climbing, scoring, stochastic slip rates, noisy sensor flipping, coordinate mapping, and edge cases. Also ran 1500+ automated playthroughs in Playwright across all modes.
 
 ```bash
-node simulate.js
+$ node simulate.js
+
+▶ TEST 1:  World Generation — 100 games × 5 modes = 500 worlds
+▶ TEST 2:  Movement Mechanics
+▶ TEST 3:  Turn Mechanics
+▶ TEST 4:  Shoot Mechanics
+▶ TEST 5:  Grab Mechanics
+▶ TEST 6:  Climb Mechanics
+▶ TEST 7:  Scoring — Perfect game walkthrough
+▶ TEST 8:  Noisy Sensors — 1000 perception tests
+▶ TEST 9:  Stochastic Mode — 500 moves
+▶ TEST 10: Deterministic Mode — 200 moves, 0 slips
+▶ TEST 11: Full Gameplay — 100 games × 5 modes
+▶ TEST 12: Stench removal after Wumpus kill
+▶ TEST 13: Coordinate System
+▶ TEST 14: All actions blocked after gameOver
+▶ TEST 15: Large/Nightmare — Multiple Wumpi
+▶ TEST 16: Gold Reachability — 1000 games × 5 modes = 5000 worlds
+▶ TEST 17: Smart Agent — 500 games, visit all reachable cells, always find gold
+
+✅ ALL TESTS PASSED — Game 100% aligns with Russell & Norvig Section 7.2
 ```
 
 ## References
