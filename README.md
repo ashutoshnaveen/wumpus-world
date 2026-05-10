@@ -127,12 +127,34 @@ Tracks across auto-play runs:
 
 Typical results over 200 Classic-mode games: KB agent ~34% win rate, KB+Probabilistic agent ~63% win rate.
 
+## Gameplay Analysis
+
+Every human game ends with an automatic **report card** — no AI mode, no external API, runs entirely offline.
+
+A **shadow KB agent** runs in parallel with the player, tracking what a logical agent would know at each step. After game over, each move is classified:
+
+| Rating | Meaning |
+|--------|--------|
+| ✅ **Good / Perfect** | Moved to a provably safe cell or took the correct action (grab gold, climb at exit) |
+| · **OK** | Neutral action (turn, shoot) |
+| ⚠️ **Risky** | Entered a cell with possible pit or Wumpus (not proven safe by KB) |
+| ❌ **Mistake** | Chose an unknown cell when a safe frontier option existed |
+| 💥 **Blunder** | Missed grabbing gold, or climbed out with safe cells still unexplored |
+
+The report card shows:
+- **Grade (A–F)** — based on accuracy percentage and blunder count
+- **Accuracy %** — ratio of good/OK moves to total moves
+- **Move-by-move log** — color-coded with the AI's suggested alternative for each mistake
+- **Study suggestions** — maps mistakes to textbook sections (e.g., "Section 7.3 — Moved into cell with possible pit")
+
 ## How to Play
 
-Open `index.html` in a browser.
+**Online:** [ashutoshnaveen.github.io/wumpus-world](https://ashutoshnaveen.github.io/wumpus-world/)
+
+**Offline:** Download the page (File → Save As, or right-click → Save As HTML) and open `index.html` in any browser. Everything is self-contained in a single file — no internet required.
 
 ```bash
-# or serve it
+# or serve it locally
 python3 -m http.server 8000
 ```
 
@@ -173,6 +195,18 @@ $ node simulate.js
 
 ✅ ALL TESTS PASSED — Game 100% aligns with Russell & Norvig Section 7.2
 ```
+
+## Features at a Glance
+
+- 5 game modes (Classic → Nightmare)
+- Full KB inference with live overlay
+- Two AI agents (KB and Probabilistic) with auto-play
+- Context-sensitive hint system
+- Post-game gameplay analysis with grade & suggestions
+- Textbook study guide with formulas
+- PWA / offline support
+- Mobile responsive with touch & swipe
+- Single HTML file, zero dependencies
 
 ## References
 
