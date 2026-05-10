@@ -30,7 +30,9 @@
     user-select: none; padding: 8px 8px 24px;
   }
   h1 { font-size: 1.3rem; margin-bottom: 2px; letter-spacing: 1px; }
-  .subtitle { font-size: 0.7rem; opacity: 0.6; margin-bottom: 6px; }
+  .subtitle { font-size: 0.7rem; opacity: 0.6; margin-bottom: 2px; }
+  .dedication { font-size: 0.62rem; opacity: 0.5; margin-bottom: 6px; letter-spacing: 0.3px; }
+  .dedication span { color: var(--gold); opacity: 0.85; }
 
   /* Mode selector */
   .mode-bar {
@@ -361,6 +363,7 @@
 
 <h1>🏰 Wumpus World</h1>
 <p class="subtitle">Russell &amp; Norvig — AI: A Modern Approach</p>
+<p class="dedication">Inspired by a warm conversation with <span>Prof. R K Mishra</span> &amp; <span>Prof. Devender Singh</span></p>
 
 <div class="install-banner" id="install-banner">
   <button class="install-close" onclick="dismissInstall()" aria-label="Close">✕</button>
@@ -523,7 +526,7 @@
     <h4>Grid Symbols</h4>
     <table>
       <tr><th>Symbol</th><th>Meaning</th></tr>
-      <tr><td>➡ ⬆ ⬇ ⬅</td><td>You (arrow shows facing direction)</td></tr>
+      <tr><td>🧑‍🚀➡ 🧑‍🚀⬆ 🧑‍🚀⬇ 🧑‍🚀⬅</td><td>You (explorer + arrow shows facing direction)</td></tr>
       <tr><td>👹</td><td>Wumpus (revealed on death/game end)</td></tr>
       <tr><td>🕳️</td><td>Pit (revealed on death/game end)</td></tr>
       <tr><td>✨</td><td>Gold</td></tr>
@@ -757,6 +760,8 @@ let world, agent, score, arrows, hasGold, wumpusAlive, gameOver, visited, kb, mo
 let perceivedWorld; // what agent THINKS it perceives (for noisy mode)
 let facing; // 'up','down','left','right' — direction agent faces (per textbook: starts facing right)
 const FACING_ARROWS = {up:'⬆', down:'⬇', left:'⬅', right:'➡'};
+const FACING_INDICATORS = {up:'▲', down:'▼', left:'◀', right:'▶'};
+const AGENT_CHAR = '🧑‍🚀';
 const FACING_DELTA = {up:[-1,0], down:[1,0], left:[0,-1], right:[0,1]};
 const TURN_ORDER = ['up','right','down','left']; // clockwise
 
@@ -1157,8 +1162,9 @@ function render() {
 
       let entity = '', label = toCoord(r, c);
 
-      if (isAgent && !gameOver) {
-        entity = FACING_ARROWS[facing];
+      const isAgentHere = isAgent && !gameOver;
+      if (isAgentHere) {
+        entity = AGENT_CHAR + FACING_ARROWS[facing];
       } else if (visited[r][c] || gameOver) {
         const parts = [];
         if (world[r][c].wumpus) parts.push(wumpusAlive > 0 ? '👹' : '☠️');
@@ -1174,12 +1180,13 @@ function render() {
           cell.classList.add('noisy-hint');
       }
 
+      const finalEntFs = isAgentHere ? Math.max(10, sz * 0.28) : entFs;
       cell.innerHTML =
-        `<span class="entity" style="font-size:${entFs}px">${entity}</span>` +
+        `<span class="entity" style="font-size:${finalEntFs}px">${entity}</span>` +
         `<span class="label" style="font-size:${lblFs}px">${label}</span>`;
 
       // Percepts (show perceived, not true — in noisy mode they may differ)
-      if (visited[r][c] || gameOver) {
+      if (isAgentHere || visited[r][c] || gameOver) {
         const src = (gameOver && !cfg.noisySensors) ? world[r][c] : (perceivedWorld[r][c] || world[r][c]);
         const percs = [];
         if (src.stench) percs.push('🟢');
@@ -1345,12 +1352,19 @@ function classifyMove(playerAction, playerDir, fromR, fromC, toR, toC) {
   const sk = shadowKB;
   const destKey = toR !== undefined ? `${toR},${toC}` : null;
 
-  // BLUNDER: moved into a cell known to be dangerous
+  // RISKY: moved into a cell not proven safe — but check outcome
   if (playerAction === 'move' && destKey) {
+    const landed = world[toR]?.[toC];
+    const gotLucky = landed && !landed.pit && !landed.wumpus;
+    const foundGold = landed && landed.gold;
     if (sk.maypit.has(destKey) && !sk.safe.has(destKey) && !sk.nopit.has(destKey)) {
+      if (foundGold) return { cls: 'ok', label: 'Lucky', advice: 'Risky but found gold! ' + advice.reason, concept: 'Section 7.3 — Unproven cell, but fortune favored you' };
+      if (gotLucky) return { cls: 'ok', label: 'Bold', advice: 'Not proven safe, but survived. ' + advice.reason, concept: 'Section 7.3 — Moved into unproven cell (happened to be safe)' };
       return { cls: 'mistake', label: 'Risky', advice: advice.reason, concept: 'Section 7.3 — Moved into cell with possible pit (not proven safe)' };
     }
     if (sk.maywumpus.has(destKey) && !sk.safe.has(destKey) && !sk.nowumpus.has(destKey)) {
+      if (foundGold) return { cls: 'ok', label: 'Lucky', advice: 'Risky but found gold! ' + advice.reason, concept: 'Section 7.3 — Unproven cell, but fortune favored you' };
+      if (gotLucky) return { cls: 'ok', label: 'Bold', advice: 'Not proven safe, but survived. ' + advice.reason, concept: 'Section 7.3 — Moved into unproven cell (happened to be safe)' };
       return { cls: 'mistake', label: 'Risky', advice: advice.reason, concept: 'Section 7.3 — Moved into cell with possible Wumpus' };
     }
   }
